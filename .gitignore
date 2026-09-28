@@ -2,3 +2,9 @@
 *.log
 .DS_Store
 Thumbs.db
+fleet_orders/
+fleet_templates/
+.agents/
+.claude/
+.env
+
