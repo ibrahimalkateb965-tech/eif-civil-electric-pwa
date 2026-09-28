@@ -602,9 +602,9 @@
         }
       }
       if (hasPreExistingData) {
-        console.log('[EIF_DB] IndexedDB already contains data. Skipping re-migration to protect existing records.');
+        console.log('[EIF_DB] IndexedDB already contains data. Checking for unmigrated stores from legacy storage...');
 
-        // Backup legacy data before purging
+        // Locate legacy data if present
         let rawLegacy = storage.getItem('EIF_DATA_MASTER_V1');
         if (!rawLegacy) {
           for (const k of LEGACY_STORAGE_KEYS) {
@@ -612,6 +612,41 @@
             if (v && v.trim().startsWith('{')) { rawLegacy = v; break; }
           }
         }
+
+        let parsedLegacy = null;
+        if (rawLegacy && !rawLegacy.includes('"migratedToIndexedDB"')) {
+          try { parsedLegacy = JSON.parse(rawLegacy); } catch (e) {}
+        }
+
+        // Copy over any store that is empty in IndexedDB but has records in legacy data
+        if (parsedLegacy && typeof parsedLegacy === 'object') {
+          const legacyPayload = this._prepareFlushPayload(parsedLegacy);
+          for (const [storeName, records] of Object.entries(legacyPayload)) {
+            if (records && records.length > 0) {
+              const currentIdbRecs = await this.getAllRecords(storeName);
+              if (!currentIdbRecs || currentIdbRecs.length === 0) {
+                console.log(`[EIF_DB] Recovering unmigrated store '${storeName}' (${records.length} records) to IndexedDB...`);
+                try {
+                  await new Promise((resolve, reject) => {
+                    const tx = db.transaction([storeName], 'readwrite');
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error || new Error('Tx failed on ' + storeName));
+                    tx.onabort = () => reject(tx.error || new Error('Tx aborted on ' + storeName));
+                    const store = tx.objectStore(storeName);
+                    for (const item of records) {
+                      if (item) store.put(item);
+                    }
+                  });
+                } catch (e) {
+                  console.error(`[EIF_DB] Failed to recover store ${storeName}:`, e);
+                  return { migrated: false, count: 0, reason: 'write_failure' };
+                }
+              }
+            }
+          }
+        }
+
+        // Backup legacy data before purging
         if (rawLegacy && !rawLegacy.includes('"migratedToIndexedDB"')) {
           try { storage.setItem('EIF_PRE_MIGRATION_BACKUP', rawLegacy); } catch (e) {}
         }
@@ -756,6 +791,9 @@
 
       const S = (typeof global !== 'undefined' && global.S) || {};
 
+      const storage = global.localStorage;
+      const isMigrationComplete = this.migrated || (storage && storage.getItem('EIF_MIGRATION_COMPLETE_V16_48') === 'true');
+
       // 1. Load all entity stores
       const directStores = [
         'companies', 'workorders', 'permits', 'materials', 'issues',
@@ -769,7 +807,13 @@
 
       for (const name of directStores) {
         const records = await this.getAllRecords(name);
-        S[name] = Array.isArray(records) ? records : [];
+        if (records && records.length) {
+          S[name] = records;
+        } else if (!isMigrationComplete && S[name] && S[name].length) {
+          // If migration is incomplete and store failed to migrate, preserve in-memory data
+        } else {
+          S[name] = [];
+        }
       }
 
       // Checklists: map back to object keyed by woId

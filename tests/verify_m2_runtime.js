@@ -349,8 +349,31 @@ async function runM2Verification() {
 
   // --- Test Group 11: Defect P4 Regression (JSON Restore Window.S Binding) ---
   console.log('\n--- Group 11: Defect P4 Regression (JSON Restore Window.S Binding) ---');
-  test('F10.2: Restoring backup binds window.S and global.S so subsequent saves persist restored data', () => {
-    const backupData = {
+  test('F10.2: app.js restoreFile handler rebinds window.S and global.S and invokes save()', () => {
+    const appJsContent = fs.readFileSync(path.join(PROJECT_ROOT, 'app.js'), 'utf8');
+    const match = appJsContent.match(/function restoreFile\s*\([^)]*\)\s*\{[\s\S]*?readAsText\([^)]*\)\}/);
+    assert.ok(match, 'restoreFile function must exist in app.js');
+
+    let savedInvoked = false;
+    let alertMsg = '';
+    global.save = () => { savedInvoked = true; };
+    global.alert = (msg) => { alertMsg = msg; };
+    global.window = global.window || {};
+
+    class MockFileReader {
+      readAsText(file) {
+        this.result = file.content;
+        if (typeof this.onload === 'function') {
+          this.onload();
+        }
+      }
+    }
+    global.FileReader = MockFileReader;
+
+    const restoreFn = new Function('return ' + match[0])();
+
+    // Test with structured backup payload
+    const structuredBackup = {
       meta: { system: 'EngineerIslamFouda', version: 'V16.48' },
       data: {
         companies: [{ id: 'c_restored', name: 'شركة الاستعادة المعتمدة' }],
@@ -358,18 +381,211 @@ async function runM2Verification() {
         materials: []
       }
     };
-    const jsonStr = JSON.stringify(backupData);
+    restoreFn({ content: JSON.stringify(structuredBackup) });
 
-    // Simulate app.js restoreFile handler logic
-    const parsed = JSON.parse(jsonStr);
-    let S = parsed.data || parsed;
-    global.window.S = S;
-    if (typeof global !== 'undefined') global.S = S;
-
-    assert.equal(global.window.S.companies[0].name, 'شركة الاستعادة المعتمدة');
-    assert.equal(global.S.companies[0].name, 'شركة الاستعادة المعتمدة');
+    assert.ok(savedInvoked, 'save() must be invoked after restore');
+    assert.equal(alertMsg, 'تم استرجاع النسخة', 'Should show success alert');
+    assert.ok(global.window.S && global.window.S.workorders, 'window.S must be bound with data');
+    assert.ok(global.S && global.S.workorders, 'global.S must be bound with data');
     assert.equal(global.window.S.workorders[0].no, 'WO-RESTORED-99');
     assert.equal(global.S.workorders[0].no, 'WO-RESTORED-99');
+
+    // Test with direct legacy backup payload
+    savedInvoked = false;
+    const directBackup = {
+      companies: [{ id: 'c_direct', name: 'شركة مباشرة' }],
+      workorders: [{ id: 'w_direct', no: 'WO-DIRECT-01' }],
+      materials: []
+    };
+    restoreFn({ content: JSON.stringify(directBackup) });
+    assert.ok(savedInvoked, 'save() must be invoked after legacy restore');
+    assert.equal(global.window.S.workorders[0].no, 'WO-DIRECT-01');
+    assert.equal(global.S.workorders[0].no, 'WO-DIRECT-01');
+  });
+
+  // --- Test Group 12: Partial Migration Recovery Invariant ---
+  console.log('\n--- Group 12: Partial Migration Recovery Invariant ---');
+  await testAsync('F09.3: Unmigrated store during initial failure is recovered to IndexedDB on subsequent boot without data loss', async () => {
+    function makeFaultIDB(failSet) {
+      const stores = new Map();
+      const db = {
+        objectStoreNames: { contains: n => stores.has(n) },
+        createObjectStore(n, o) { const s = { kp: o.keyPath, data: new Map(), createIndex() {} }; stores.set(n, s); return s; },
+        transaction(names, mode) {
+          const tx = { oncomplete: null, onerror: null, onabort: null };
+          const bad = names.some(n => failSet.has(n)) && mode === 'readwrite';
+          const pending = [];
+          tx.objectStore = n => {
+            const s = stores.get(n); if (!s) throw new Error('NotFoundError ' + n);
+            const req = (fn) => { const r = {}; pending.push(() => { if (bad) { r.error = 'ConstraintError'; r.onerror && r.onerror(); } else { r.result = fn(); r.onsuccess && r.onsuccess({ target: r }); } }); return r; };
+            return {
+              put: v => req(() => { if (!bad) s.data.set(String(v[s.kp]), structuredClone(v)); }),
+              get: k => req(() => { const v = s.data.get(String(k)); return v ? structuredClone(v) : undefined; }),
+              getAll: () => req(() => [...s.data.values()].map(v => structuredClone(v))),
+              delete: k => req(() => s.data.delete(String(k))),
+              clear: () => req(() => s.data.clear()),
+            };
+          };
+          setTimeout(() => { pending.forEach(f => f()); if (bad) tx.onabort && tx.onabort(); else tx.oncomplete && tx.oncomplete(); }, 0);
+          return tx;
+        },
+        _stores: stores,
+      };
+      return {
+        db,
+        factory: { open() { const r = {}; setTimeout(() => { r.result = db; r.onupgradeneeded && r.onupgradeneeded({ target: r }); r.onsuccess && r.onsuccess({ target: r }); }, 0); return r; } },
+      };
+    }
+
+    const legacy = {
+      workorders: [{ id: 'w1', no: 'WO-1' }],
+      tasks: [{ id: 't1', title: 'Task A' }],
+      equipment: [{ id: 'e1', name: 'Excavator CAT 320' }]
+    };
+    const ls = new MockLocalStorage();
+    ls.setItem('EIF_DATA_MASTER_V1', JSON.stringify(legacy));
+    const failSet = new Set(['equipment']);
+    const faultIdb = makeFaultIDB(failSet);
+
+    const oldIDB = global.indexedDB;
+    const oldLS = global.localStorage;
+    global.indexedDB = faultIdb.factory;
+    global.localStorage = ls;
+    if (global.window) {
+      global.window.indexedDB = faultIdb.factory;
+      global.window.localStorage = ls;
+    }
+
+    delete require.cache[require.resolve('../assets/js/db.js')];
+    let { PersistenceManager: PM } = require('../assets/js/db.js');
+
+    // Boot 1: migration fails on equipment
+    let pm1 = new PM();
+    global.S = JSON.parse(ls.getItem('EIF_DATA_MASTER_V1'));
+    if (global.window) global.window.S = global.S;
+    await pm1.loadStateIntoMemory();
+    assert.equal(global.S.equipment.length, 1, 'Equipment should remain in S during boot 1');
+
+    // In-flight user edit and debounced save
+    global.S.tasks[0].title = 'Task A Edited';
+    pm1.isDirty = true;
+    pm1.dirtySeq++;
+    await pm1.flush();
+
+    // Transient failure clears
+    failSet.clear();
+
+    // Boot 2: app restarts, IndexedDB has data, but equipment is empty in IDB.
+    // The system must detect unmigrated equipment and recover it into IndexedDB.
+    delete require.cache[require.resolve('../assets/js/db.js')];
+    ({ PersistenceManager: PM } = require('../assets/js/db.js'));
+    let pm2 = new PM();
+    global.S = JSON.parse(ls.getItem('EIF_DATA_MASTER_V1'));
+    if (global.window) global.window.S = global.S;
+    await pm2.loadStateIntoMemory();
+
+    assert.equal(global.S.equipment.length, 1, 'Equipment must be preserved across boot 2');
+    assert.equal(global.S.equipment[0].name, 'Excavator CAT 320', 'Equipment data must be intact');
+    const idbEquip = faultIdb.db._stores.get('equipment').data.get('e1');
+    assert.ok(idbEquip, 'Equipment must be recovered into IndexedDB store');
+    assert.equal(idbEquip.name, 'Excavator CAT 320');
+
+    // Clean up
+    global.indexedDB = oldIDB;
+    global.localStorage = oldLS;
+    if (global.window) {
+      global.window.indexedDB = oldIDB;
+      global.window.localStorage = oldLS;
+    }
+  });
+
+  // --- Test Group 13: Partial Migration Recovery Before Flush ---
+  console.log('\n--- Group 13: Partial Migration Recovery Before Flush ---');
+  await testAsync('F09.4: When transient failure clears before flush, unmigrated store is safely captured and recovered', async () => {
+    function makeFaultIDB(failSet) {
+      const stores = new Map();
+      const db = {
+        objectStoreNames: { contains: n => stores.has(n) },
+        createObjectStore(n, o) { const s = { kp: o.keyPath, data: new Map(), createIndex() {} }; stores.set(n, s); return s; },
+        transaction(names, mode) {
+          const tx = { oncomplete: null, onerror: null, onabort: null };
+          const bad = names.some(n => failSet.has(n)) && mode === 'readwrite';
+          const pending = [];
+          tx.objectStore = n => {
+            const s = stores.get(n); if (!s) throw new Error('NotFoundError ' + n);
+            const req = (fn) => { const r = {}; pending.push(() => { if (bad) { r.error = 'ConstraintError'; r.onerror && r.onerror(); } else { r.result = fn(); r.onsuccess && r.onsuccess({ target: r }); } }); return r; };
+            return {
+              put: v => req(() => { if (!bad) s.data.set(String(v[s.kp]), structuredClone(v)); }),
+              get: k => req(() => { const v = s.data.get(String(k)); return v ? structuredClone(v) : undefined; }),
+              getAll: () => req(() => [...s.data.values()].map(v => structuredClone(v))),
+              delete: k => req(() => s.data.delete(String(k))),
+              clear: () => req(() => s.data.clear()),
+            };
+          };
+          setTimeout(() => { pending.forEach(f => f()); if (bad) tx.onabort && tx.onabort(); else tx.oncomplete && tx.oncomplete(); }, 0);
+          return tx;
+        },
+        _stores: stores,
+      };
+      return {
+        db,
+        factory: { open() { const r = {}; setTimeout(() => { r.result = db; r.onupgradeneeded && r.onupgradeneeded({ target: r }); r.onsuccess && r.onsuccess({ target: r }); }, 0); return r; } },
+      };
+    }
+
+    const legacy = {
+      workorders: [{ id: 'w1', no: 'WO-1' }],
+      tasks: [{ id: 't1', title: 'Task B' }],
+      equipment: [{ id: 'e2', name: 'Bulldozer D8R' }]
+    };
+    const ls = new MockLocalStorage();
+    ls.setItem('EIF_DATA_MASTER_V1', JSON.stringify(legacy));
+    const failSet = new Set(['equipment']);
+    const faultIdb = makeFaultIDB(failSet);
+
+    const oldIDB = global.indexedDB;
+    const oldLS = global.localStorage;
+    global.indexedDB = faultIdb.factory;
+    global.localStorage = ls;
+    if (global.window) {
+      global.window.indexedDB = faultIdb.factory;
+      global.window.localStorage = ls;
+    }
+
+    delete require.cache[require.resolve('../assets/js/db.js')];
+    let { PersistenceManager: PM } = require('../assets/js/db.js');
+
+    // Boot 1
+    let pm1 = new PM();
+    global.S = JSON.parse(ls.getItem('EIF_DATA_MASTER_V1'));
+    if (global.window) global.window.S = global.S;
+    await pm1.loadStateIntoMemory();
+    assert.equal(global.S.equipment.length, 1);
+
+    // Failure clears before flush
+    failSet.clear();
+    global.S.tasks[0].title = 'Task B Edited';
+    pm1.isDirty = true;
+    pm1.dirtySeq++;
+    await pm1.flush();
+
+    // Boot 2
+    delete require.cache[require.resolve('../assets/js/db.js')];
+    ({ PersistenceManager: PM } = require('../assets/js/db.js'));
+    let pm2 = new PM();
+    global.S = JSON.parse(ls.getItem('EIF_DATA_MASTER_V1'));
+    if (global.window) global.window.S = global.S;
+    await pm2.loadStateIntoMemory();
+
+    assert.equal(global.S.equipment.length, 1, 'Equipment must be preserved across boot 2');
+    assert.equal(global.S.equipment[0].name, 'Bulldozer D8R', 'Equipment data must match Bulldozer');
+
+    global.indexedDB = oldIDB;
+    global.localStorage = oldLS;
+    if (global.window) {
+      global.window.indexedDB = oldIDB;
+      global.window.localStorage = oldLS;
+    }
   });
 
   console.log('\n========================================================================');
