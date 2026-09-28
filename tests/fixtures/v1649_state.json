@@ -1,0 +1,192 @@
+{
+  "meta": {
+    "source": "V16.49 legacy shape (record shapes taken from app.js at 03af61d)",
+    "dbVersion": 2,
+    "capturedAt": "2026-09-28T00:00:00.000Z",
+    "coverage": "SOP_WORK_CENTER_UNIFICATION.md §6.2, every row (P0 gate, Claude)",
+    "expected": {
+      "defDedupe": "c1: wt1+def1 (حفر) and wt2+def2 (دفان) collapse; wt4 'حفر ' normalizes to حفر. c1 defs = حفر, دفان, تمديد كابلات, ردم, تنفيذ عام, تمديد كابل, تركيب عداد. c2 defs = تنفيذ عام",
+      "siteReqSelected": "2 (wo1:def1, wo1:def2); wo1:def3 is selected:false and must NOT become a line",
+      "execMerged": "ex1 (stage حفر) merges onto mig:siteReq:wo1:def1 (progressPct 40); ex2 -> mig:general:wo2; ex3 (c2) -> mig:general:wo3 on c2's own 'تنفيذ عام' def",
+      "tasksWithWo": "3 (t1, t2, t4); t3 has no wo and is not migrated",
+      "taskResolved": "t1 user 'علي' -> p1 only (p6 is also 'علي' but in company c2)",
+      "taskAmbiguous": "t2 user 'محمد' matches p2 and p3 (' محمد' normalizes) -> unassigned, legacyRef.assignText kept",
+      "taskNoMatch": "t4 user 'خالد' matches nobody -> unassigned, legacyRef.assignText kept",
+      "missingBinaries": "4 (ev1: 2 photos + 1 video, ev2: 1 video), all without hash",
+      "hashedEvidence": "we1 file keeps its hash, missingBinary:false",
+      "superAdminInference": "p3 accessScope super_admin -> isSuperAdmin true (only p3)",
+      "unmatchedRole": "p2 'فورمان' (c1) and p6 'مهندس سلامة' (c2, title exists only in c1) -> title created in that company's 'عام' dept, person flagged",
+      "departments": "c1: قسم السلامة (team1), عام. c2: قسم التشغيل (team4), عام. No dept for title-less teams team2/team3",
+      "moduleAccess": "jt1.moduleAccess -> title.moduleAccess; p4 moduleAccess1618 execution:approve (max with team2 1620 edit); p2 <- team2 1620 execution:edit; p1 <- own 1620 docs:view + team1 1618 safety:approve"
+    }
+  },
+  "companies": [
+    { "id": "c1", "name": "شركة التمديدات", "code": "C1" },
+    { "id": "c2", "name": "شركة الجنوب", "code": "C2" }
+  ],
+  "activeCompanyId": "c1",
+  "workTypes": [
+    { "id": "wt1", "name": "حفر" },
+    { "id": "wt2", "name": "دفان" },
+    { "id": "wt3", "name": "تمديد كابلات" },
+    { "id": "wt4", "name": "حفر " }
+  ],
+  "siteRequirementDefs": [
+    { "id": "def1", "name": "حفر", "unit": "م3" },
+    { "id": "def2", "name": "دفان", "unit": "م3" },
+    { "id": "def3", "name": "ردم", "unit": "م3" }
+  ],
+  "workorders": [
+    {
+      "id": "wo1",
+      "no": "WO-2026-001",
+      "code": "C-001",
+      "companyId": "c1",
+      "company": "شركة التمديدات",
+      "workDescription": "حفر",
+      "assign": "علي",
+      "exec": "",
+      "siteReq": {
+        "def1": { "selected": true, "name": "حفر", "unit": "م3", "qty": 12 },
+        "def2": { "selected": true, "name": "دفان", "unit": "م3", "qty": 5 },
+        "def3": { "selected": false, "name": "ردم", "unit": "م3", "qty": 0 }
+      }
+    },
+    {
+      "id": "wo2",
+      "no": "WO-2026-002",
+      "code": "C-002",
+      "companyId": "c1",
+      "company": "شركة التمديدات",
+      "workDescription": "تمديد كابلات",
+      "assign": "",
+      "exec": "",
+      "siteReq": {}
+    },
+    {
+      "id": "wo3",
+      "no": "WO-2026-S01",
+      "code": "S-001",
+      "companyId": "c2",
+      "company": "شركة الجنوب",
+      "workDescription": "تشغيل محطة",
+      "assign": "منى",
+      "exec": "",
+      "siteReq": {}
+    }
+  ],
+  "exec": [
+    { "id": "ex1", "wo": "wo1", "status": "مفتوح", "stage": "حفر", "progress": 40 },
+    { "id": "ex2", "wo": "wo2", "status": "مفتوح", "stage": "تركيب", "progress": 10 },
+    { "id": "ex3", "wo": "wo3", "status": "مفتوح", "stage": "تشغيل", "progress": 25 }
+  ],
+  "executionEvidence": [
+    {
+      "id": "ev1",
+      "wo": "wo1",
+      "stage": "حفر",
+      "photos": [
+        { "name": "photo1.jpg", "size": 1024, "type": "image/jpeg", "date": "2026-09-01T08:00:00.000Z" },
+        { "name": "photo2.jpg", "size": 2048, "type": "image/jpeg", "date": "2026-09-01T08:05:00.000Z" }
+      ],
+      "videos": [
+        { "name": "clip1.mp4", "size": 504800, "type": "video/mp4", "date": "2026-09-01T08:10:00.000Z" }
+      ]
+    },
+    {
+      "id": "ev2",
+      "wo": "wo3",
+      "stage": "تشغيل",
+      "photos": [],
+      "videos": [
+        { "name": "commissioning.mp4", "size": 912000, "type": "video/mp4", "date": "2026-09-04T12:00:00.000Z" }
+      ]
+    }
+  ],
+  "workEvidence1628": [
+    {
+      "id": "we1",
+      "companyId": "c1",
+      "wo": "wo1",
+      "type": "note",
+      "note": "ملاحظة الموقع",
+      "emailRef": "",
+      "delayFrom": "",
+      "delayTo": "",
+      "delayDays": 0,
+      "files": [
+        { "name": "doc.pdf", "size": 14, "type": "application/pdf", "hash": "3a1f8b2c9d0e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c" }
+      ],
+      "createdAt": "2026-09-02T10:00:00.000Z",
+      "createdBy": "علي"
+    },
+    {
+      "id": "we2",
+      "companyId": "c1",
+      "wo": "wo1",
+      "type": "delay",
+      "note": "تأخير بسبب التصريح",
+      "emailRef": "REF-77",
+      "delayFrom": "2026-09-03",
+      "delayTo": "2026-09-05",
+      "delayDays": 2,
+      "files": [],
+      "createdAt": "2026-09-03T09:00:00.000Z",
+      "createdBy": "علي"
+    }
+  ],
+  "tasks": [
+    { "id": "t1", "wo": "wo1", "text": "تمديد كابل", "user": "علي", "due": "2026-09-10", "done": false },
+    { "id": "t2", "wo": "wo1", "text": "تركيب عداد", "user": "محمد", "due": "2026-09-11", "done": false },
+    { "id": "t3", "wo": "", "text": "مهمة عامة بدون أمر عمل", "user": "علي", "due": "", "done": false },
+    { "id": "t4", "wo": "wo2", "text": "تمديد كابل", "user": "خالد", "due": "2026-09-12", "done": false }
+  ],
+  "jobTitles1624": [
+    {
+      "id": "jt1",
+      "companyId": "c1",
+      "teamId": "team1",
+      "name": "مهندس سلامة",
+      "scope": "department_manage",
+      "moduleAccess": { "safety": "admin", "execution": "view" }
+    },
+    {
+      "id": "jt2",
+      "companyId": "c1",
+      "teamId": "",
+      "name": "مراقب",
+      "scope": "assigned",
+      "moduleAccess": { "execution": "edit" }
+    },
+    {
+      "id": "jt3",
+      "companyId": "c2",
+      "teamId": "team4",
+      "name": "مدير قسم",
+      "scope": "department_manage",
+      "moduleAccess": { "execution": "approve", "workorders": "edit" }
+    }
+  ],
+  "orgPeople": [
+    { "id": "p1", "companyId": "c1", "teamId": "team1", "name": "علي", "role": "مهندس سلامة", "accessScope": "department_manage", "active": true,
+      "moduleAccess1620": { "docs": "view" } },
+    { "id": "p2", "companyId": "c1", "teamId": "team2", "name": "محمد", "role": "فورمان", "accessScope": "assigned", "active": true },
+    { "id": "p3", "companyId": "c1", "teamId": "", "name": " محمد", "role": "سوبر أدمن", "accessScope": "super_admin", "active": true },
+    { "id": "p4", "companyId": "c1", "teamId": "team2", "name": "سارة", "role": "مراقب", "accessScope": "assigned", "active": true,
+      "moduleAccess1618": { "execution": "approve" } },
+    { "id": "p5", "companyId": "c2", "teamId": "team4", "name": "منى", "role": "مدير قسم", "accessScope": "department_manage", "active": true },
+    { "id": "p6", "companyId": "c2", "teamId": "team4", "name": "علي", "role": "مهندس سلامة", "accessScope": "assigned", "active": true }
+  ],
+  "orgTeams": [
+    { "id": "team1", "name": "السلامة", "companyId": "c1", "moduleAccess1618": { "safety": "approve" } },
+    { "id": "team2", "name": "الحفر", "companyId": "c1", "moduleAccess1620": { "execution": "edit" } },
+    { "id": "team3", "name": "الكهرباء", "companyId": "c1" },
+    { "id": "team4", "name": "التشغيل", "companyId": "c2" }
+  ],
+  "attachments": [
+    { "hash": "3a1f8b2c9d0e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c", "name": "doc.pdf", "type": "application/pdf", "size": 14,
+      "links": [ { "wo": "wo1", "category": "work-evidence-1628" } ] }
+  ],
+  "safeSnapshots1646": [],
+  "accessAudit1617": []
+}

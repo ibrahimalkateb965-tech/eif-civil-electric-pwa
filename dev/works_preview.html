@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>WMS V16.50 — Work Center Studio Preview</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <link rel="stylesheet" href="../assets/css/works.css">
+  <style>
+    body {
+      background: #eef2f5;
+      margin: 0;
+      padding: 16px;
+      font-family: Tahoma, Arial, sans-serif;
+    }
+    .preview-cockpit {
+      background: #0d2f4b;
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 16px rgba(13, 47, 75, 0.2);
+    }
+    .preview-cockpit h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .preview-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .preview-controls select {
+      background: #ffffff;
+      color: #0d2f4b;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .preview-wrapper {
+      max-width: 1024px;
+      margin: 0 auto;
+      transition: max-width 0.2s ease;
+    }
+    .preview-wrapper.tablet-view {
+      max-width: 768px;
+      border: 2px dashed #1577b9;
+      border-radius: 16px;
+      padding: 10px;
+      background: #ffffff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Studio Top Cockpit -->
+  <div class="preview-cockpit">
+    <h1>🚀 WMS V16.50 — معاينة مركز الأعمال المستقل (P3a Preview)</h1>
+    <div class="preview-controls">
+      <div>
+        <label style="font-size:12px;margin-inline-end:4px">تبديل المستخدم (Actor):</label>
+        <select id="selActor">
+          <option value="user_admin">👑 م. إسلام فودة (Super Admin)</option>
+          <option value="user_manager">👔 م. طارق الزهراني (مدير قسم المدني)</option>
+          <option value="user_foreman_ali">👷 علي عبد الله (فورمن مسند لبنود 1 و 2)</option>
+          <option value="user_foreman_saad">👷 سعد القحطاني (فورمن مسند لبند 3)</option>
+          <option value="null">📱 بدون جلسة (وضع جهاز المالك الافتراضي R-3)</option>
+        </select>
+      </div>
+
+      <div>
+        <label style="font-size:12px;margin-inline-end:4px">اللغة (i18n):</label>
+        <select id="selLang">
+          <option value="ar" selected>العربية (Arabic - RTL)</option>
+          <option value="en">English (LTR)</option>
+          <option value="ur">اردو (Urdu)</option>
+          <option value="hi">हिन्दी (Hindi)</option>
+          <option value="bn">বাংলা (Bengali)</option>
+        </select>
+      </div>
+
+      <div>
+        <label style="font-size:12px;margin-inline-end:4px">عرض الشاشة:</label>
+        <select id="selViewport">
+          <option value="full">عرض كامل (Full Viewport)</option>
+          <option value="tablet" selected>عرض التابلت (768px Tablet View)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Mount Container -->
+  <div class="preview-wrapper tablet-view" id="previewWrapper">
+    <div id="wcAppMount"></div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="works_mock.js"></script>
+  <script src="../assets/js/works_ui.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var mountEl = document.getElementById('wcAppMount');
+      var wrapper = document.getElementById('previewWrapper');
+      var S = window.__EIF_MOCK_STATE;
+
+      function getSelectedActor() {
+        var val = document.getElementById('selActor').value;
+        if (val === 'null') return null;
+        return S.persons.find(function (p) { return p.id === val; });
+      }
+
+      function update() {
+        var actor = getSelectedActor();
+        var lang = document.getElementById('selLang').value;
+        window.uiLanguage = lang;
+        document.documentElement.lang = lang;
+        document.documentElement.dir = (lang === 'ar' || lang === 'ur') ? 'rtl' : 'ltr';
+
+        window.EIF_WORKS_UI.mount(mountEl, S, actor);
+      }
+
+      document.getElementById('selActor').onchange = update;
+      document.getElementById('selLang').onchange = update;
+      document.getElementById('selViewport').onchange = function () {
+        if (this.value === 'tablet') {
+          wrapper.className = 'preview-wrapper tablet-view';
+        } else {
+          wrapper.className = 'preview-wrapper';
+        }
+      };
+
+      // Initial Mount
+      update();
+      console.log('✅ WMS V16.50 Work Center Preview Mounted Successfully with zero errors.');
+    });
+  </script>
+</body>
+</html>

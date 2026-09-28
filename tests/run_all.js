@@ -2,7 +2,7 @@
 /**
  * tests/run_all.js
  * Master Automated CLI Test Runner for Engineer Islam Fouda Work Management System
- * Executes 4-Tier test suites with ANSI-colored reporting and standard exit codes (0/1).
+ * Executes 5-Tier test suites with ANSI-colored reporting and standard exit codes (0/1).
  */
 
 const path = require('node:path');
@@ -32,7 +32,8 @@ const FEATURE_MILESTONE_MAP = {
   F05: 'M2', F06: 'M2', F07: 'M2', F08: 'M2', F09: 'M2', F10: 'M2', F11: 'M2',
   F12: 'M3', F13: 'M3', F14: 'M3', F15: 'M3', F16: 'M3',
   F17: 'M4', F18: 'M4', F19: 'M4', F20: 'M4', F21: 'M4',
-  Pairwise: 'M5', Scenarios: 'M5'
+  Pairwise: 'M5', Scenarios: 'M5',
+  WorkCenter: 'M6'
 };
 
 // ANSI Color formatting
@@ -53,7 +54,7 @@ const colors = {
 
 function banner() {
   console.log(`\n${colors.bold}${colors.cyan}========================================================================${colors.reset}`);
-  console.log(`${colors.bold}${colors.white}   ENGINEER ISLAM FOUDA WORK MANAGEMENT SYSTEM — 4-TIER TEST RUNNER    ${colors.reset}`);
+  console.log(`${colors.bold}${colors.white}   ENGINEER ISLAM FOUDA WORK MANAGEMENT SYSTEM — 5-TIER TEST RUNNER    ${colors.reset}`);
   console.log(`${colors.dim}   Node.js v${process.versions.node} | Offline Native Test Engine | Target: Base V16.48   ${colors.reset}`);
   console.log(`${colors.bold}${colors.cyan}========================================================================${colors.reset}\n`);
 }
@@ -64,6 +65,7 @@ function loadSuites() {
   require('./tier2_boundaries.test.js');
   require('./tier3_pairwise.test.js');
   require('./tier4_scenarios.test.js');
+  require('./tier5_work_center.test.js');
 }
 
 async function run() {
@@ -71,7 +73,7 @@ async function run() {
   loadSuites();
 
   const totalRegistered = testRegistry.length;
-  console.log(`${colors.dim}Loaded ${totalRegistered} test cases across 4 verification tiers.${colors.reset}`);
+  console.log(`${colors.dim}Loaded ${totalRegistered} test cases across 5 verification tiers.${colors.reset}`);
   if (filterTier) console.log(`${colors.yellow}Filter Tier: Tier ${filterTier}${colors.reset}`);
   if (filterFeature) console.log(`${colors.yellow}Filter Feature: ${filterFeature}${colors.reset}`);
   if (filterMilestone) console.log(`${colors.yellow}Filter Milestone: ${filterMilestone}${colors.reset}`);
@@ -103,7 +105,8 @@ async function run() {
     'Tier 1': { total: 0, passed: 0, failed: 0, duration: 0 },
     'Tier 2': { total: 0, passed: 0, failed: 0, duration: 0 },
     'Tier 3': { total: 0, passed: 0, failed: 0, duration: 0 },
-    'Tier 4': { total: 0, passed: 0, failed: 0, duration: 0 }
+    'Tier 4': { total: 0, passed: 0, failed: 0, duration: 0 },
+    'Tier 5': { total: 0, passed: 0, failed: 0, duration: 0 }
   };
 
   let totalPassed = 0;

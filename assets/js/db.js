@@ -1,7 +1,7 @@
 /**
  * assets/js/db.js
  * Engineer Islam Fouda Work Management System — IndexedDB Persistence Engine
- * Version: 2.1.0 (V16.49)
+ * Version: 3.0.0 (V16.50)
  *
  * Implements:
  * 1. Single-transaction atomic flush() across all stores with automatic rollback on error.
@@ -15,7 +15,7 @@
   'use strict';
 
   const DB_NAME = 'EngineerIslamFoudaDB';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
 
   // Primary Entity Stores + Dedicated Blobs Store + Catch-All Unmapped State Store
   const STORE_DEFINITIONS = [
@@ -129,6 +129,11 @@
     // Catch-all store for any other scalar or unmapped fields in S
     { name: 'unmapped_state', keyPath: 'key' },
     { name: 'settings', keyPath: 'key' },
+    // Work Center stores (V16.50, SOP §1.4) — strictly additive, never deleted on upgrade
+    { name: 'worksDefs',   keyPath: 'id', indexes: [{ name: 'companyId', keyPath: 'companyId' }, { name: 'code', keyPath: 'code' }] },
+    { name: 'worksLines',  keyPath: 'id', indexes: [{ name: 'woId', keyPath: 'woId' }, { name: 'defId', keyPath: 'defId' }, { name: 'status', keyPath: 'status' }, { name: 'assigneeIds', keyPath: 'assigneeIds', multiEntry: true }] },
+    { name: 'worksReqs',   keyPath: 'id', indexes: [{ name: 'lineId', keyPath: 'lineId' }, { name: 'woId', keyPath: 'woId' }, { name: 'status', keyPath: 'status' }] },
+    { name: 'worksEvents', keyPath: 'id', indexes: [{ name: 'woId', keyPath: 'woId' }, { name: 'entityId', keyPath: 'entityId' }, { name: 'at', keyPath: 'at' }] },
     // Dedicated binary blobs store
     { name: 'blobs', keyPath: 'hash', indexes: [{ name: 'storedAt', keyPath: 'storedAt' }] }
   ];
@@ -207,7 +212,7 @@
               const store = db.createObjectStore(def.name, { keyPath: def.keyPath });
               if (def.indexes) {
                 for (const idx of def.indexes) {
-                  store.createIndex(idx.name, idx.keyPath || idx.name, { unique: !!idx.unique });
+                  store.createIndex(idx.name, idx.keyPath || idx.name, { unique: !!idx.unique, multiEntry: !!idx.multiEntry });
                 }
               }
             }
@@ -508,6 +513,17 @@
       const qp = S.qualityProfiles1647 || S.qualityProfiles;
       payload['qualityProfiles'] = Array.isArray(qp) ? qp.slice() : [];
 
+      // Works Center (V16.50): dedicated stores. handled.add('works') keeps S.works
+      // out of the unmapped_state catch-all below.
+      handled.add('works');
+      if (S.works) {
+        const W = S.works;
+        payload.worksDefs   = (W.defs   || []).slice();
+        payload.worksReqs   = (W.reqs   || []).slice();
+        payload.worksEvents = (W.events || []).slice();
+        payload.worksLines  = (W.lines  || []).map(l => Object.assign({}, l, { assigneeIds: (l.assignees || []).map(a => a.personId) }));
+      }
+
       // Unmapped State catch-all
       const unmapped = [];
       for (const [key, value] of Object.entries(S)) {
@@ -523,6 +539,9 @@
         { key: 'uiLanguage', value: S.uiLanguage || 'ar' },
         { key: 'activeCompanyId', value: S.activeCompanyId || '' }
       ];
+      if (S.works) {
+        payload['settings'].push({ key: 'works.meta', value: { schema: S.works.schema, migratedFrom: S.works.migratedFrom || {}, tombstones: S.works.tombstones || [] } });
+      }
 
       return payload;
     }
@@ -853,6 +872,36 @@
             S[k] = v;
           }
         }
+      }
+
+      // 3.5 Works Center rehydration (V16.50): dedicated stores win over the snapshot fallback
+      const worksMetaRecord = await this.getRecord('settings', 'works.meta');
+      if (worksMetaRecord && worksMetaRecord.value && typeof worksMetaRecord.value === 'object') {
+        const wm = worksMetaRecord.value;
+        const worksDefRecords = await this.getAllRecords('worksDefs');
+        const worksLineRecords = await this.getAllRecords('worksLines');
+        for (const l of worksLineRecords) {
+          if (l && Object.prototype.hasOwnProperty.call(l, 'assigneeIds')) {
+            delete l.assigneeIds;
+          }
+        }
+        const worksReqRecords = await this.getAllRecords('worksReqs');
+        const worksEventRecords = await this.getAllRecords('worksEvents');
+        worksEventRecords.sort((a, b) => {
+          const atA = a && a.at ? String(a.at) : '';
+          const atB = b && b.at ? String(b.at) : '';
+          if (atA !== atB) return atA < atB ? -1 : 1;
+          return String((a && a.id) || '').localeCompare(String((b && b.id) || ''));
+        });
+        S.works = {
+          schema: wm.schema,
+          migratedFrom: wm.migratedFrom || {},
+          tombstones: wm.tombstones || [],
+          defs: worksDefRecords,
+          lines: worksLineRecords,
+          reqs: worksReqRecords,
+          events: worksEventRecords
+        };
       }
 
       // 4. Load auxiliary settings
