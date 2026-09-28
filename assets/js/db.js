@@ -151,6 +151,7 @@
       this.activeFlushPromise = null;
       this.debounceTimer = null;
       this.debounceDelayMs = 150;
+      this._pendingSyncResolvers = [];
       this.inMemoryBlobs = new Map();
       this.inMemoryStores = new Map();
       for (const def of STORE_DEFINITIONS) {
@@ -602,8 +603,38 @@
       }
       if (hasPreExistingData) {
         console.log('[EIF_DB] IndexedDB already contains data. Skipping re-migration to protect existing records.');
+
+        // Backup legacy data before purging
+        let rawLegacy = storage.getItem('EIF_DATA_MASTER_V1');
+        if (!rawLegacy) {
+          for (const k of LEGACY_STORAGE_KEYS) {
+            const v = storage.getItem(k);
+            if (v && v.trim().startsWith('{')) { rawLegacy = v; break; }
+          }
+        }
+        if (rawLegacy && !rawLegacy.includes('"migratedToIndexedDB"')) {
+          try { storage.setItem('EIF_PRE_MIGRATION_BACKUP', rawLegacy); } catch (e) {}
+        }
+
+        // Set completion flag
         try { storage.setItem('EIF_MIGRATION_COMPLETE_V16_48', 'true'); } catch (e) {}
+
+        // Safe purge of legacy storage keys
+        for (const legacyKey of LEGACY_STORAGE_KEYS) {
+          try { storage.removeItem(legacyKey); } catch (e) {}
+        }
+
+        // Replace raw state with lightweight pointer in localStorage
+        try {
+          storage.setItem('EIF_DATA_MASTER_V1', JSON.stringify({
+            migratedToIndexedDB: true,
+            migratedAt: new Date().toISOString(),
+            version: 'V16.49'
+          }));
+        } catch (e) {}
+
         await this.putRecord('settings', { key: 'migration_status', value: 'completed', reason: 'idb_has_preexisting_data' });
+        this.migrated = true;
         return { migrated: false, count: 0, reason: 'idb_has_data' };
       }
 
@@ -738,16 +769,12 @@
 
       for (const name of directStores) {
         const records = await this.getAllRecords(name);
-        if (records && records.length) {
-          S[name] = records;
-        } else if (!S[name]) {
-          S[name] = [];
-        }
+        S[name] = Array.isArray(records) ? records : [];
       }
 
       // Checklists: map back to object keyed by woId
       const checklistRecords = await this.getAllRecords('checklists');
-      S.checklists = S.checklists || {};
+      S.checklists = {};
       if (checklistRecords && checklistRecords.length) {
         for (const item of checklistRecords) {
           if (item && item.woId) {
@@ -761,10 +788,8 @@
 
       // Quality profiles mapping
       const qp = await this.getAllRecords('qualityProfiles');
-      if (qp && qp.length) {
-        S.qualityProfiles1647 = qp;
-        S.qualityProfiles = qp;
-      }
+      S.qualityProfiles1647 = Array.isArray(qp) ? qp : [];
+      S.qualityProfiles = S.qualityProfiles1647;
 
       // 2. Load all unmapped state fields
       const unmapped = await this.getAllRecords('unmapped_state');
@@ -776,11 +801,11 @@
         }
       }
 
-      // 3. Fallback rehydration from master_state_snapshot if any field was missing
+      // 3. Fallback rehydration from master_state_snapshot if any field was completely missing
       const masterSnap = await this.getRecord('settings', 'master_state_snapshot');
       if (masterSnap && masterSnap.value && typeof masterSnap.value === 'object') {
         for (const [k, v] of Object.entries(masterSnap.value)) {
-          if (S[k] === undefined || (Array.isArray(v) && (!S[k] || !S[k].length))) {
+          if (S[k] === undefined) {
             S[k] = v;
           }
         }
@@ -811,26 +836,40 @@
 
     /**
      * Debounced write-behind persistence
+     * DEFECT 2 FIX: Collects and resolves all promises issued within the debounce window
+     * so earlier saveState() calls never hang when subsequent edits reset the timer.
      */
     scheduleSync() {
       this.dirtySeq++;
       if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
+        this.debounceTimer = null;
+      }
+
+      if (!this._pendingSyncResolvers) {
+        this._pendingSyncResolvers = [];
       }
 
       return new Promise((resolve) => {
+        this._pendingSyncResolvers.push(resolve);
         this.debounceTimer = setTimeout(async () => {
+          this.debounceTimer = null;
+          const resolvers = this._pendingSyncResolvers;
+          this._pendingSyncResolvers = [];
           const res = await this.flush();
-          resolve(res);
+          for (const r of resolvers) {
+            try { r(res); } catch (e) {}
+          }
         }, this.debounceDelayMs);
       });
     }
 
     /**
-     * Single-transaction atomic flush with sequence counter dirty tracking
-     * DEFECTS P1 & P3 FIX:
-     * - Clear & put all stores in ONE single readwrite transaction.
-     * - dirtySeq vs lastSavedSeq ensures edits during an in-flight flush are never lost!
+     * Robust per-store write-behind flush with failure propagation and sequence counter dirty tracking
+     * DEFECTS P1, P2 & P3 FIX:
+     * - Isolated per-store readwrite transactions prevent cascading store locks.
+     * - Any store failure keeps isDirty=true and returns false for retry without dropping edits.
+     * - dirtySeq vs lastSavedSeq ensures edits during an in-flight flush trigger a re-flush!
      */
     async flush() {
       if (this.activeFlushPromise) {

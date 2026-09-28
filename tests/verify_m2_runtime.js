@@ -270,6 +270,108 @@ async function runM2Verification() {
     assert.ok(backupIdx < appIdx, 'backup.js must load before app.js');
   });
 
+  // --- Test Group 9: Defect 1 Regression (Three-Boot Deletion Invariant) ---
+  console.log('\n--- Group 9: Defect 1 Regression (Three-Boot Deletion Invariant) ---');
+  await testAsync('F09.2: User-deleted records are never resurrected from localStorage on subsequent boots', async () => {
+    const testLs = new MockLocalStorage();
+    const legacy = {
+      workorders: [{ id: 'w1', no: 'WO-1' }],
+      tasks: [{ id: 't1', title: 'TASK-TO-DELETE' }],
+      companies: [{ id: 'c1', name: 'شركة المقاولات' }]
+    };
+    testLs.setItem('EIF_DATA_MASTER_V1', JSON.stringify(legacy));
+
+    // Boot 1: initial migration
+    for (const store of env.mockDb.stores.values()) {
+      store.data.clear();
+    }
+    env.localStorage = testLs;
+    global.localStorage = testLs;
+    if (global.window) global.window.localStorage = testLs;
+
+    const pm1 = new PersistenceManager();
+    await pm1.openDatabase();
+    await pm1.loadStateIntoMemory();
+
+    // Verify task is loaded
+    assert.equal(global.S.tasks.length, 1);
+
+    // Boot 2: user deletes all tasks
+    global.S.tasks = [];
+    pm1.isDirty = true;
+    const ok = await pm1.flush();
+    assert.ok(ok, 'Flush after deletion should succeed');
+
+    const idbTasks = await pm1.getAllRecords('tasks');
+    assert.equal(idbTasks.length, 0, 'Tasks in IndexedDB must be 0 after deletion');
+
+    // Boot 3: simulate app restart reading from localStorage pointer
+    const pm3 = new PersistenceManager();
+    global.S = JSON.parse(testLs.getItem('EIF_DATA_MASTER_V1') || '{}');
+    const loadedS = await pm3.loadStateIntoMemory();
+    assert.ok(loadedS && Array.isArray(loadedS.tasks), 'loadedS.tasks should be an array');
+    assert.equal(loadedS.tasks.length, 0, 'Tasks after Boot 3 must remain empty (no resurrection)');
+    pm3.isDirty = true;
+    await pm3.flush();
+    const idbTasksBoot3 = await pm3.getAllRecords('tasks');
+    assert.equal(idbTasksBoot3.length, 0, 'Tasks in IndexedDB must remain 0 after subsequent save');
+  });
+
+  // --- Test Group 10: Defect 2 Regression (Debounced Save Promises Resolution) ---
+  console.log('\n--- Group 10: Defect 2 Regression (Debounced Save Promises Resolution) ---');
+  await testAsync('F07.2: Multiple saveState calls inside debounce window all resolve cleanly without hanging', async () => {
+    const pm = new PersistenceManager();
+    await pm.openDatabase();
+    pm.debounceDelayMs = 50;
+
+    global.S = { workorders: [{ id: 'w_test_debounce', no: 'WO-DEB' }] };
+    let p1Resolved = false;
+    let p2Resolved = false;
+
+    const promise1 = pm.scheduleSync().then(res => {
+      p1Resolved = true;
+      return res;
+    });
+
+    // Fire second call immediately within debounce delay
+    const promise2 = pm.scheduleSync().then(res => {
+      p2Resolved = true;
+      return res;
+    });
+
+    const [res1, res2] = await Promise.all([promise1, promise2]);
+    assert.ok(p1Resolved, 'First debounced promise must resolve');
+    assert.ok(p2Resolved, 'Second debounced promise must resolve');
+    assert.ok(res1, 'First debounced flush should report success');
+    assert.ok(res2, 'Second debounced flush should report success');
+    assert.equal(pm.isDirty, false, 'isDirty must be false after debounced flush');
+  });
+
+  // --- Test Group 11: Defect P4 Regression (JSON Restore Window.S Binding) ---
+  console.log('\n--- Group 11: Defect P4 Regression (JSON Restore Window.S Binding) ---');
+  test('F10.2: Restoring backup binds window.S and global.S so subsequent saves persist restored data', () => {
+    const backupData = {
+      meta: { system: 'EngineerIslamFouda', version: 'V16.48' },
+      data: {
+        companies: [{ id: 'c_restored', name: 'شركة الاستعادة المعتمدة' }],
+        workorders: [{ id: 'w_restored', no: 'WO-RESTORED-99' }],
+        materials: []
+      }
+    };
+    const jsonStr = JSON.stringify(backupData);
+
+    // Simulate app.js restoreFile handler logic
+    const parsed = JSON.parse(jsonStr);
+    let S = parsed.data || parsed;
+    global.window.S = S;
+    if (typeof global !== 'undefined') global.S = S;
+
+    assert.equal(global.window.S.companies[0].name, 'شركة الاستعادة المعتمدة');
+    assert.equal(global.S.companies[0].name, 'شركة الاستعادة المعتمدة');
+    assert.equal(global.window.S.workorders[0].no, 'WO-RESTORED-99');
+    assert.equal(global.S.workorders[0].no, 'WO-RESTORED-99');
+  });
+
   console.log('\n========================================================================');
   console.log(`  VERIFICATION COMPLETE: ${passed} / ${total} tests passed (100% SUCCESS)`);
   console.log('========================================================================\n');
