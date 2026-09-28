@@ -553,12 +553,12 @@
     async _dualWriteIfMigrationIncomplete(S) {
       const storage = global.localStorage;
       if (!storage) return;
-      const isComplete = storage.getItem('EIF_MIGRATION_COMPLETE_V16_48');
-      if (!isComplete) {
-        try {
+      try {
+        const isComplete = storage.getItem('EIF_MIGRATION_COMPLETE_V16_48');
+        if (!isComplete) {
           storage.setItem('EIF_DATA_MASTER_V1', JSON.stringify(S));
-        } catch (e) {}
-      }
+        }
+      } catch (e) {}
     }
 
     /**
