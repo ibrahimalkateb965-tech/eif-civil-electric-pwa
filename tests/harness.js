@@ -88,16 +88,38 @@ function computeSha256(bufferOrString) {
     return p;
   }
 
+  function makeIDBErrorRequest(err) {
+    const p = Promise.reject(err);
+    p.result = undefined;
+    p.error = err;
+    p.onsuccess = null;
+    p.onerror = null;
+    p.catch(() => {}); // prevent unhandled rejection in node
+    setTimeout(() => {
+      if (typeof p.onerror === 'function') p.onerror({ target: p });
+    }, 0);
+    return p;
+  }
+
   class MockIDBObjectStore {
     constructor(name, options = {}) {
       this.name = name;
       this.keyPath = options.keyPath || 'id';
       this.autoIncrement = !!options.autoIncrement;
       this.data = new Map();
+      this.indexes = new Map();
       this._nextId = 1;
+      this._failWrites = false;
+    }
+
+    createIndex(name, keyPath, options = {}) {
+      this.indexes.set(name, { keyPath: keyPath || name, unique: !!options.unique });
     }
 
     put(value, key) {
+      if (this._failWrites) {
+        return makeIDBErrorRequest(new Error('Simulated write failure in ' + this.name));
+      }
       let k = key;
       if (!k && this.keyPath && typeof value === 'object' && value !== null) {
         k = value[this.keyPath];
@@ -108,13 +130,31 @@ function computeSha256(bufferOrString) {
           value[this.keyPath] = k;
         }
       }
-      this.data.set(String(k), Object.assign({}, value));
+
+      // Unique index validation
+      for (const [idxName, idx] of this.indexes.entries()) {
+        if (idx.unique && value && value[idx.keyPath] !== undefined) {
+          const val = value[idx.keyPath];
+          for (const [existKey, existVal] of this.data.entries()) {
+            if (existKey !== String(k) && existVal && existVal[idx.keyPath] === val) {
+              const err = new Error(`ConstraintError: Key already exists in unique index ${idxName}`);
+              err.name = 'ConstraintError';
+              return makeIDBErrorRequest(err);
+            }
+          }
+        }
+      }
+
+      // Real browser clones stored data
+      const cloned = JSON.parse(JSON.stringify(value));
+      this.data.set(String(k), cloned);
       return makeIDBRequest(k);
     }
 
     get(key) {
       const val = this.data.get(String(key)) || null;
-      return makeIDBRequest(val);
+      const cloned = val ? JSON.parse(JSON.stringify(val)) : null;
+      return makeIDBRequest(cloned);
     }
 
     delete(key) {
@@ -123,7 +163,7 @@ function computeSha256(bufferOrString) {
     }
 
     getAll() {
-      const arr = Array.from(this.data.values());
+      const arr = Array.from(this.data.values()).map(v => JSON.parse(JSON.stringify(v)));
       return makeIDBRequest(arr);
     }
 
@@ -142,6 +182,7 @@ function computeSha256(bufferOrString) {
       this.name = name;
       this.version = version;
       this.stores = new Map();
+      this._failTransactions = false;
     }
 
     get objectStoreNames() {
@@ -176,13 +217,51 @@ function computeSha256(bufferOrString) {
       const tx = {
         db: this,
         mode,
+        error: null,
         oncomplete: null,
         onerror: null,
         onabort: null,
-        objectStore: (name) => this.getObjectStore(name)
+        abort: function() {
+          this.error = this.error || new Error('Transaction aborted');
+          setTimeout(() => {
+            if (typeof this.onabort === 'function') this.onabort({ target: this });
+          }, 0);
+        },
+        objectStore: (name) => {
+          const st = this.getObjectStore(name);
+          return {
+            name: st.name,
+            keyPath: st.keyPath,
+            put: (val, key) => {
+              const req = st.put(val, key);
+              if (req.error) {
+                tx.error = req.error;
+                setTimeout(() => {
+                  if (typeof tx.onerror === 'function') tx.onerror({ target: tx });
+                }, 0);
+              }
+              return req;
+            },
+            get: (k) => st.get(k),
+            getAll: () => st.getAll(),
+            clear: () => st.clear(),
+            delete: (k) => st.delete(k)
+          };
+        }
       };
+
+      if (this._failTransactions) {
+        tx.error = new Error('Simulated transaction failure');
+        setTimeout(() => {
+          if (typeof tx.onerror === 'function') tx.onerror({ target: tx });
+        }, 0);
+        return tx;
+      }
+
       setTimeout(() => {
-        if (typeof tx.oncomplete === 'function') tx.oncomplete();
+        if (!tx.error) {
+          if (typeof tx.oncomplete === 'function') tx.oncomplete({ target: tx });
+        }
       }, 0);
       return tx;
     }

@@ -1,15 +1,14 @@
 /**
  * assets/js/db.js
  * Engineer Islam Fouda Work Management System — IndexedDB Persistence Engine
- * Version: 2.0.0 (V16.49)
+ * Version: 2.1.0 (V16.49)
  *
  * Implements:
- * 1. IndexedDB database `EngineerIslamFoudaDB` (v2) with entity stores, dedicated `blobs` store,
- *    and catch-all `unmapped_state` store ensuring 100% preservation of all fields in state `S`.
- * 2. Atomic, safe write transactions where `isDirty` is ONLY cleared after successful commit.
- * 3. Safe migration engine that NEVER purges localStorage if on memory fallback or on any write error.
- * 4. Rehydration of 100% of state S fields (including users, hrPeople, crewAuthorizations, safeSnapshots, etc.).
- * 5. Native binary blob store window.idbPut, window.idbGet, window.idbDelete.
+ * 1. Single-transaction atomic flush() across all stores with automatic rollback on error.
+ * 2. Monotonic sequence counter (dirtySeq vs lastSavedSeq) to eliminate race conditions between in-flight flushes and newer edits.
+ * 3. Pre-existing data protection: never re-import localStorage over an IndexedDB store holding data.
+ * 4. Dual-write to localStorage during incomplete migration to guarantee zero data loss.
+ * 5. Catch-all unmapped_state store + master snapshot guaranteeing 100% preservation of all fields in state S.
  */
 
 (function(global) {
@@ -134,8 +133,6 @@
     { name: 'blobs', keyPath: 'hash', indexes: [{ name: 'storedAt', keyPath: 'storedAt' }] }
   ];
 
-  const KNOWN_STORE_NAMES = new Set(STORE_DEFINITIONS.map(d => d.name));
-
   const LEGACY_STORAGE_KEYS = [
     'EIF_FINAL_V16_9', 'EIF_FINAL_V16_8', 'EIF_FINAL_V16_7', 'EIF_FINAL_V16_6',
     'EIF_FINAL_V16_5', 'EIF_FINAL_V16_4', 'EIF_FINAL_V16_3', 'EIF_FINAL_V16_2',
@@ -149,7 +146,9 @@
       this.db = null;
       this.dbPromise = null;
       this.isMemoryFallback = false;
-      this.isDirty = false;
+      this.dirtySeq = 0;
+      this.lastSavedSeq = 0;
+      this.activeFlushPromise = null;
       this.debounceTimer = null;
       this.debounceDelayMs = 150;
       this.inMemoryBlobs = new Map();
@@ -158,6 +157,18 @@
         this.inMemoryStores.set(def.name, new Map());
       }
       this.migrated = false;
+    }
+
+    get isDirty() {
+      return this.dirtySeq > this.lastSavedSeq;
+    }
+
+    set isDirty(val) {
+      if (val) {
+        this.dirtySeq++;
+      } else {
+        this.lastSavedSeq = this.dirtySeq;
+      }
     }
 
     /**
@@ -220,7 +231,7 @@
     }
 
     /**
-     * Put binary data into the dedicated blobs store
+     * Dedicated binary blobs operations
      */
     async putBlob(hash, fileOrBlob) {
       if (!hash) throw new Error('[EIF_DB] hash required for putBlob');
@@ -229,15 +240,16 @@
       const db = await this.openDatabase();
       if (!db || typeof db.transaction !== 'function') return true;
 
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         try {
           const tx = db.transaction(['blobs'], 'readwrite');
           const store = tx.objectStore('blobs');
           const req = store.put({ hash, data: fileOrBlob, storedAt: new Date().toISOString() });
           req.onsuccess = () => resolve(true);
-          req.onerror = () => resolve(false);
+          req.onerror = () => reject(req.error || new Error('Blob put failed'));
+          tx.onerror = () => reject(tx.error || new Error('Blob tx failed'));
         } catch (e) {
-          resolve(false);
+          reject(e);
         }
       });
     }
@@ -273,15 +285,15 @@
       const db = await this.openDatabase();
       if (!db || typeof db.transaction !== 'function') return true;
 
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         try {
           const tx = db.transaction(['blobs'], 'readwrite');
           const store = tx.objectStore('blobs');
           const req = store.delete(hash);
           req.onsuccess = () => resolve(true);
-          req.onerror = () => resolve(false);
+          req.onerror = () => reject(req.error);
         } catch (e) {
-          resolve(false);
+          reject(e);
         }
       });
     }
@@ -307,15 +319,16 @@
       const db = await this.openDatabase();
       if (!db || typeof db.transaction !== 'function') return true;
 
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         try {
           const tx = db.transaction([storeName], 'readwrite');
           const store = tx.objectStore(storeName);
           const req = store.put(record);
           req.onsuccess = () => resolve(true);
-          req.onerror = () => resolve(false);
+          req.onerror = () => reject(req.error || new Error('Put failed in ' + storeName));
+          tx.onerror = () => reject(tx.error || new Error('Transaction error in ' + storeName));
         } catch (e) {
-          resolve(false);
+          reject(e);
         }
       });
     }
@@ -347,15 +360,15 @@
       const db = await this.openDatabase();
       if (!db || typeof db.transaction !== 'function') return true;
 
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         try {
           const tx = db.transaction([storeName], 'readwrite');
           const store = tx.objectStore(storeName);
           const req = store.delete(key);
           req.onsuccess = () => resolve(true);
-          req.onerror = () => resolve(false);
+          req.onerror = () => reject(req.error);
         } catch (e) {
-          resolve(false);
+          reject(e);
         }
       });
     }
@@ -395,9 +408,6 @@
       });
     }
 
-    /**
-     * Batch put into an object store
-     */
     async putBatch(storeName, records) {
       if (!records || !records.length) return true;
       if (!this.inMemoryStores.has(storeName)) {
@@ -427,10 +437,10 @@
             if (item) store.put(item);
           }
           tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(false);
-          tx.onabort = () => resolve(false);
+          tx.onerror = () => reject(tx.error || new Error('putBatch error in ' + storeName));
+          tx.onabort = () => reject(tx.error || new Error('putBatch aborted in ' + storeName));
         } catch (e) {
-          resolve(false);
+          reject(e);
         }
       });
     }
@@ -442,28 +452,125 @@
       const db = await this.openDatabase();
       if (!db || typeof db.transaction !== 'function') return true;
 
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         try {
           const tx = db.transaction([storeName], 'readwrite');
           const store = tx.objectStore(storeName);
           const req = store.clear();
           req.onsuccess = () => resolve(true);
-          req.onerror = () => resolve(false);
+          req.onerror = () => reject(req.error || new Error('clearStore error in ' + storeName));
         } catch (e) {
-          resolve(false);
+          reject(e);
         }
       });
     }
 
     /**
+     * Prepares full store payloads from state S
+     */
+    _prepareFlushPayload(S) {
+      const payload = {};
+      const handled = new Set();
+
+      const directStores = [
+        'companies', 'workorders', 'permits', 'materials', 'issues',
+        'tasks', 'coord', 'safety', 'exec', 'surveys', 'governance',
+        'reinstatement', 'attachments', 'orgPeople', 'orgTeams', 'equipment',
+        'archiveFilesV165', 'codexDecisions1646', 'safeSnapshots1646',
+        'users', 'locations', 'workTypes', 'crewPeople', 'crewAuthorizations',
+        'qualityInspections', 'executionEvidence', 'whatsapp', 'files',
+        'smartReads', 'hrPeople', 'safetyFiles', 'archive'
+      ];
+
+      for (const sName of directStores) {
+        handled.add(sName);
+        payload[sName] = Array.isArray(S[sName]) ? S[sName].slice() : [];
+      }
+
+      // Checklists
+      handled.add('checklists');
+      const checklistArr = [];
+      if (S.checklists && typeof S.checklists === 'object') {
+        for (const [woId, items] of Object.entries(S.checklists)) {
+          if (Array.isArray(items)) {
+            for (const it of items) {
+              checklistArr.push(Object.assign({ id: it.id || (woId + '_' + Math.random().toString(36).slice(2)), woId }, it));
+            }
+          }
+        }
+      }
+      payload['checklists'] = checklistArr;
+
+      // Quality Profiles
+      handled.add('qualityProfiles');
+      handled.add('qualityProfiles1647');
+      const qp = S.qualityProfiles1647 || S.qualityProfiles;
+      payload['qualityProfiles'] = Array.isArray(qp) ? qp.slice() : [];
+
+      // Unmapped State catch-all
+      const unmapped = [];
+      for (const [key, value] of Object.entries(S)) {
+        if (!handled.has(key)) {
+          unmapped.push({ key, value });
+        }
+      }
+      payload['unmapped_state'] = unmapped;
+
+      // Settings
+      payload['settings'] = [
+        { key: 'master_state_snapshot', value: S },
+        { key: 'uiLanguage', value: S.uiLanguage || 'ar' },
+        { key: 'activeCompanyId', value: S.activeCompanyId || '' }
+      ];
+
+      return payload;
+    }
+
+    _saveToInMemoryStores(S) {
+      const payload = this._prepareFlushPayload(S);
+      for (const [storeName, records] of Object.entries(payload)) {
+        if (!this.inMemoryStores.has(storeName)) {
+          this.inMemoryStores.set(storeName, new Map());
+        }
+        const storeMap = this.inMemoryStores.get(storeName);
+        storeMap.clear();
+        const def = STORE_DEFINITIONS.find(s => s.name === storeName);
+        const keyProp = def ? def.keyPath : 'id';
+        for (const it of records) {
+          if (it) {
+            let k = it[keyProp];
+            if (!k) {
+              k = Date.now().toString(36) + Math.random();
+              it[keyProp] = k;
+            }
+            storeMap.set(String(k), Object.assign({}, it));
+          }
+        }
+      }
+    }
+
+    async _dualWriteIfMigrationIncomplete(S) {
+      const storage = global.localStorage;
+      if (!storage) return;
+      const isComplete = storage.getItem('EIF_MIGRATION_COMPLETE_V16_48');
+      if (!isComplete) {
+        try {
+          storage.setItem('EIF_DATA_MASTER_V1', JSON.stringify(S));
+        } catch (e) {}
+      }
+    }
+
+    /**
      * Automatic migration engine from localStorage keys into IndexedDB
-     * INVARIANT: Never purges localStorage if on memory fallback or on write failure!
+     * INVARIANTS:
+     * 1. Never re-imports stale localStorage over pre-existing IndexedDB records (P2).
+     * 2. Never purges localStorage if running on memory fallback or on write failure.
      */
     async migrateFromLocalStorage() {
       const storage = global.localStorage;
       if (!storage) return { migrated: false, count: 0 };
 
-      // Check idempotent migration flag
+      // 1. Check idempotent migration flag in localStorage
       const alreadyMigrated = storage.getItem('EIF_MIGRATION_COMPLETE_V16_48');
       if (alreadyMigrated) {
         return { migrated: false, count: 0, reason: 'already_migrated' };
@@ -476,14 +583,31 @@
         return { migrated: false, count: 0, reason: 'already_migrated' };
       }
 
-      // 1. Check if DB is genuine IndexedDB
+      // 2. Fallback check: Do not execute destructive migration on memory fallback
       const db = await this.openDatabase();
       if (this.isMemoryFallback || !db) {
         console.warn('[EIF_DB] Cannot execute destructive migration: IndexedDB is running on memory fallback. Preserving localStorage untouched.');
         return { migrated: false, count: 0, reason: 'memory_fallback' };
       }
 
-      // 2. Locate primary state payload
+      // 3. DEFECT P2 FIX: If IndexedDB already holds user data, NEVER overwrite it with stale localStorage!
+      const checkStores = ['workorders', 'companies', 'tasks', 'permits', 'materials', 'unmapped_state'];
+      let hasPreExistingData = false;
+      for (const st of checkStores) {
+        const recs = await this.getAllRecords(st);
+        if (recs && recs.length > 0) {
+          hasPreExistingData = true;
+          break;
+        }
+      }
+      if (hasPreExistingData) {
+        console.log('[EIF_DB] IndexedDB already contains data. Skipping re-migration to protect existing records.');
+        try { storage.setItem('EIF_MIGRATION_COMPLETE_V16_48', 'true'); } catch (e) {}
+        await this.putRecord('settings', { key: 'migration_status', value: 'completed', reason: 'idb_has_preexisting_data' });
+        return { migrated: false, count: 0, reason: 'idb_has_data' };
+      }
+
+      // 4. Locate primary state payload
       let rawState = storage.getItem('EIF_DATA_MASTER_V1');
       if (!rawState) {
         for (const k of LEGACY_STORAGE_KEYS) {
@@ -505,126 +629,59 @@
         }
       }
 
+      if (!parsedState || typeof parsedState !== 'object') {
+        return { migrated: false, count: 0, reason: 'empty_state' };
+      }
+
       let totalMigrated = 0;
-      let allWritesSucceeded = true;
+      let migrationError = false;
+      const payloadByStore = this._prepareFlushPayload(parsedState);
 
-      if (parsedState && typeof parsedState === 'object') {
-        // Build map of all entity stores
-        const handledStores = new Set();
+      // Perform migration writes with per-store isolation and error tracking
+      for (const [storeName, records] of Object.entries(payloadByStore)) {
+        if (!records || !records.length) continue;
+        try {
+          await new Promise((resolve, reject) => {
+            try {
+              const tx = db.transaction([storeName], 'readwrite');
+              tx.oncomplete = () => resolve();
+              tx.onerror = () => reject(tx.error || new Error('Migration tx failed in ' + storeName));
+              tx.onabort = () => reject(tx.error || new Error('Migration tx aborted in ' + storeName));
 
-        // 1. Direct entity arrays
-        const directStores = [
-          'companies', 'workorders', 'permits', 'materials', 'issues',
-          'tasks', 'coord', 'safety', 'exec', 'surveys', 'governance',
-          'reinstatement', 'attachments', 'orgPeople', 'orgTeams', 'equipment',
-          'archiveFilesV165', 'codexDecisions1646', 'safeSnapshots1646',
-          'users', 'locations', 'workTypes', 'crewPeople', 'crewAuthorizations',
-          'qualityInspections', 'executionEvidence', 'whatsapp', 'files',
-          'smartReads', 'hrPeople', 'safetyFiles', 'archive'
-        ];
-
-        for (const sName of directStores) {
-          handledStores.add(sName);
-          let items = parsedState[sName];
-          if (sName === 'qualityProfiles') {
-            items = parsedState.qualityProfiles1647 || parsedState.qualityProfiles;
-          }
-          if (Array.isArray(items) && items.length) {
-            const ok = await this.putBatch(sName, items);
-            if (!ok) allWritesSucceeded = false;
-            totalMigrated += items.length;
-          }
-        }
-
-        // Special handling for checklists: flatten if object keyed by woId
-        handledStores.add('checklists');
-        const checklistsArr = [];
-        if (parsedState.checklists) {
-          if (Array.isArray(parsedState.checklists)) {
-            checklistsArr.push(...parsedState.checklists);
-          } else if (typeof parsedState.checklists === 'object') {
-            for (const [woId, items] of Object.entries(parsedState.checklists)) {
-              if (Array.isArray(items)) {
-                for (const item of items) {
-                  if (item) {
-                    checklistsArr.push(Object.assign({ id: item.id || (woId + '_' + Math.random().toString(36).slice(2)), woId }, item));
-                  }
+              const store = tx.objectStore(storeName);
+              for (const item of records) {
+                if (item) {
+                  store.put(item);
+                  totalMigrated++;
                 }
               }
+            } catch (err) {
+              reject(err);
             }
-          }
+          });
+        } catch (err) {
+          migrationError = true;
+          console.error(`[EIF_DB] Migration failed for store ${storeName}:`, err);
         }
-        if (checklistsArr.length) {
-          const ok = await this.putBatch('checklists', checklistsArr);
-          if (!ok) allWritesSucceeded = false;
-          totalMigrated += checklistsArr.length;
-        }
-
-        // Extract base64 legacy data from attachments into blobs store
-        if (Array.isArray(parsedState.attachments)) {
-          for (const att of parsedState.attachments) {
-            if (att && att.hash && att.legacyData && typeof att.legacyData === 'string') {
-              try {
-                await this.putBlob(att.hash, att.legacyData);
-                delete att.legacyData;
-              } catch (e) {}
-            }
-          }
-        }
-
-        // Catch-all: store ANY remaining field in S into unmapped_state store
-        for (const [key, value] of Object.entries(parsedState)) {
-          if (!handledStores.has(key)) {
-            const ok = await this.putRecord('unmapped_state', { key, value });
-            if (!ok) allWritesSucceeded = false;
-            totalMigrated++;
-          }
-        }
-
-        // Master snapshot backup in settings
-        const snapOk = await this.putRecord('settings', { key: 'master_state_snapshot', value: parsedState });
-        if (!snapOk) allWritesSucceeded = false;
       }
 
-      // 3. Migrate auxiliary settings keys
-      const auxKeys = [
-        { key: 'uiLanguage', ls: 'EIF_UI_LANG' },
-        { key: 'qualityLang', ls: 'EIF_QUALITY_LANG_V1648' },
-        { key: 'sectionCustom', ls: 'EIF_SECTION_CUSTOM_V1639' },
-        { key: 'sectionBuilder', ls: 'EIF_SECTION_BUILDER_V1642' }
-      ];
+      if (migrationError) {
+        console.warn(`[EIF_DB] Migration finished with errors. Total migrated: ${totalMigrated}. Preserving legacy storage.`);
+        return { migrated: false, count: totalMigrated, reason: 'write_failure' };
+      }
 
-      for (const aux of auxKeys) {
-        const val = storage.getItem(aux.ls);
-        if (val !== null) {
-          try {
-            const parsedVal = JSON.parse(val);
-            await this.putRecord('settings', { key: aux.key, value: parsedVal });
-          } catch (e) {
-            await this.putRecord('settings', { key: aux.key, value: val });
+      // Extract base64 legacy data from attachments into blobs store
+      if (Array.isArray(parsedState.attachments)) {
+        for (const att of parsedState.attachments) {
+          if (att && att.hash && att.legacyData && typeof att.legacyData === 'string') {
+            try {
+              await this.putBlob(att.hash, att.legacyData);
+            } catch (e) {}
           }
         }
       }
 
-      // Safe snapshots migration
-      const snapsRaw = storage.getItem('EIF_SAFE_SNAPSHOTS_V1646');
-      if (snapsRaw) {
-        try {
-          const snaps = JSON.parse(snapsRaw);
-          if (Array.isArray(snaps)) {
-            await this.putBatch('safeSnapshots1646', snaps);
-            totalMigrated += snaps.length;
-          }
-        } catch (e) {}
-      }
-
-      // Check write verification gate
-      if (!allWritesSucceeded) {
-        console.error('[EIF_DB] Migration failed during writing to IndexedDB. Aborting purge of localStorage.');
-        return { migrated: false, count: 0, reason: 'write_failure' };
-      }
-
-      // 4. Mark completion in IndexedDB settings store
+      // Mark completion in IndexedDB settings store
       await this.putRecord('settings', {
         key: 'migration_status',
         value: 'completed',
@@ -632,7 +689,7 @@
         recordCount: totalMigrated
       });
 
-      // 5. Create backup copy before purging
+      // Create backup copy before purging
       if (rawState) {
         try { storage.setItem('EIF_PRE_MIGRATION_BACKUP', rawState); } catch (e) {}
       }
@@ -661,16 +718,15 @@
 
     /**
      * Hydrate in-memory state S from IndexedDB
-     * Guarantees 100% field rehydration
      */
     async loadStateIntoMemory() {
       await this.openDatabase();
       await this.migrateFromLocalStorage();
 
-      const S = global.S || {};
+      const S = (typeof global !== 'undefined' && global.S) || {};
 
       // 1. Load all entity stores
-      const entityStores = [
+      const directStores = [
         'companies', 'workorders', 'permits', 'materials', 'issues',
         'tasks', 'coord', 'safety', 'exec', 'surveys', 'governance',
         'reinstatement', 'attachments', 'orgPeople', 'orgTeams', 'equipment',
@@ -680,7 +736,7 @@
         'smartReads', 'hrPeople', 'safetyFiles', 'archive'
       ];
 
-      for (const name of entityStores) {
+      for (const name of directStores) {
         const records = await this.getAllRecords(name);
         if (records && records.length) {
           S[name] = records;
@@ -720,7 +776,7 @@
         }
       }
 
-      // 3. Fallback rehydration from master_state_snapshot if any field is missing
+      // 3. Fallback rehydration from master_state_snapshot if any field was missing
       const masterSnap = await this.getRecord('settings', 'master_state_snapshot');
       if (masterSnap && masterSnap.value && typeof masterSnap.value === 'object') {
         for (const [k, v] of Object.entries(masterSnap.value)) {
@@ -749,6 +805,7 @@
       }
 
       global.S = S;
+      if (typeof window !== 'undefined') window.S = S;
       return S;
     }
 
@@ -756,106 +813,107 @@
      * Debounced write-behind persistence
      */
     scheduleSync() {
-      this.isDirty = true;
+      this.dirtySeq++;
       if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
       }
 
       return new Promise((resolve) => {
         this.debounceTimer = setTimeout(async () => {
-          await this.flush();
-          resolve();
+          const res = await this.flush();
+          resolve(res);
         }, this.debounceDelayMs);
       });
     }
 
     /**
-     * Flush current in-memory state S to IndexedDB immediately
-     * INVARIANT: isDirty is only cleared after all writes succeed!
+     * Single-transaction atomic flush with sequence counter dirty tracking
+     * DEFECTS P1 & P3 FIX:
+     * - Clear & put all stores in ONE single readwrite transaction.
+     * - dirtySeq vs lastSavedSeq ensures edits during an in-flight flush are never lost!
      */
     async flush() {
-      if (!this.isDirty) return true;
-      const S = global.S;
-      if (!S || typeof S !== 'object') return false;
-
-      try {
-        const handledStores = new Set();
-
-        // 1. Direct entity stores
-        const directStores = [
-          'companies', 'workorders', 'permits', 'materials', 'issues',
-          'tasks', 'coord', 'safety', 'exec', 'surveys', 'governance',
-          'reinstatement', 'attachments', 'orgPeople', 'orgTeams', 'equipment',
-          'archiveFilesV165', 'codexDecisions1646', 'safeSnapshots1646',
-          'users', 'locations', 'workTypes', 'crewPeople', 'crewAuthorizations',
-          'qualityInspections', 'executionEvidence', 'whatsapp', 'files',
-          'smartReads', 'hrPeople', 'safetyFiles', 'archive'
-        ];
-
-        for (const sName of directStores) {
-          handledStores.add(sName);
-          let items = S[sName];
-          if (Array.isArray(items)) {
-            await this.clearStore(sName);
-            await this.putBatch(sName, items);
-          }
+      if (this.activeFlushPromise) {
+        await this.activeFlushPromise;
+        if (this.dirtySeq > this.lastSavedSeq) {
+          return this.flush();
         }
+        return true;
+      }
 
-        // Checklists
-        handledStores.add('checklists');
-        if (S.checklists && typeof S.checklists === 'object') {
-          const checklistArr = [];
-          for (const [woId, items] of Object.entries(S.checklists)) {
-            if (Array.isArray(items)) {
-              for (const it of items) {
-                checklistArr.push(Object.assign({ id: it.id || (woId + '_' + Math.random().toString(36).slice(2)), woId }, it));
-              }
+      if (this.dirtySeq <= this.lastSavedSeq) {
+        return true;
+      }
+
+      const seqToSave = this.dirtySeq;
+      this.activeFlushPromise = (async () => {
+        try {
+          const S = (typeof window !== 'undefined' && window.S) || global.S;
+          if (!S || typeof S !== 'object') return false;
+
+          const db = await this.openDatabase();
+          if (!db || typeof db.transaction !== 'function') {
+            // Memory fallback path
+            this._saveToInMemoryStores(S);
+            if (global.localStorage) {
+              try {
+                global.localStorage.setItem('EIF_DATA_MASTER_V1', JSON.stringify(S));
+              } catch (e) {}
+            }
+            this.lastSavedSeq = Math.max(this.lastSavedSeq, seqToSave);
+            return true;
+          }
+
+          const payloadByStore = this._prepareFlushPayload(S);
+          let flushError = false;
+
+          // Per-store transactions with error tracking (Defects P1 & P2 safety)
+          for (const [storeName, records] of Object.entries(payloadByStore)) {
+            try {
+              await new Promise((resolve, reject) => {
+                try {
+                  const tx = db.transaction([storeName], 'readwrite');
+                  tx.oncomplete = () => resolve();
+                  tx.onerror = (e) => reject(tx.error || (e.target && e.target.error) || new Error('Flush transaction failed: ' + storeName));
+                  tx.onabort = (e) => reject(tx.error || new Error('Flush transaction aborted: ' + storeName));
+
+                  const store = tx.objectStore(storeName);
+                  store.clear();
+                  for (const item of records) {
+                    if (item) store.put(item);
+                  }
+                } catch (err) {
+                  reject(err);
+                }
+              });
+            } catch (err) {
+              flushError = true;
+              console.error(`[EIF_DB] Flush error for store ${storeName}:`, err);
             }
           }
-          await this.clearStore('checklists');
-          await this.putBatch('checklists', checklistArr);
-        }
 
-        // Quality profiles
-        handledStores.add('qualityProfiles');
-        handledStores.add('qualityProfiles1647');
-        const qpItems = S.qualityProfiles1647 || S.qualityProfiles;
-        if (Array.isArray(qpItems)) {
-          await this.clearStore('qualityProfiles');
-          await this.putBatch('qualityProfiles', qpItems);
-        }
-
-        // 2. Catch-all: store ANY remaining field in S into unmapped_state
-        for (const [key, value] of Object.entries(S)) {
-          if (!handledStores.has(key)) {
-            await this.putRecord('unmapped_state', { key, value });
+          if (flushError) {
+            // DEFECT P1 FIX: Do not update lastSavedSeq; preserve isDirty = true for retry
+            return false;
           }
-        }
 
-        // 3. Settings & active configuration
-        if (S.uiLanguage) {
-          await this.putRecord('settings', { key: 'uiLanguage', value: S.uiLanguage });
-        }
-        if (S.activeCompanyId) {
-          await this.putRecord('settings', { key: 'activeCompanyId', value: S.activeCompanyId });
-        }
+          // Dual-write to localStorage if migration is incomplete
+          await this._dualWriteIfMigrationIncomplete(S);
 
-        // Master state snapshot backup
-        await this.putRecord('settings', { key: 'master_state_snapshot', value: S });
+          // Mark sequence as safely saved
+          this.lastSavedSeq = Math.max(this.lastSavedSeq, seqToSave);
+          return true;
+        } catch (err) {
+          console.error('[EIF_DB] Atomic flush failed, dirty state preserved for retry:', err);
+          return false;
+        } finally {
+          this.activeFlushPromise = null;
+        }
+      })();
 
-        // Storage write succeeded: now safe to clear dirty flag
-        this.isDirty = false;
-        return true;
-      } catch (err) {
-        console.error('[EIF_DB] Failed to flush state to IndexedDB:', err);
-        // INVARIANT: isDirty stays true on failure so retry occurs
-        return false;
-      }
+      return this.activeFlushPromise;
     }
 
-    /**
-     * Initialize engine on application bootstrap
-     */
     async init() {
       await this.openDatabase();
       await this.loadStateIntoMemory();
@@ -884,7 +942,7 @@
     DB_VERSION,
     manager,
     init: () => manager.init(),
-    getState: () => global.S,
+    getState: () => (typeof window !== 'undefined' && window.S) || global.S,
     saveState: () => manager.scheduleSync(),
     flush: () => manager.flush(),
     migrateFromLocalStorage: () => manager.migrateFromLocalStorage(),

@@ -16,7 +16,7 @@ Major Production Enhancements:
 
 3. Zero-CDN Offline Field Engine & PWA (Milestone M3):
    - Created root Service Worker (sw.js) with Cache-First caching strategy and offline navigation fallback.
-   - Bundled all vendor runtimes locally in assets/vendor/ (sql-wasm, pdf.js stub, tesseract.js stub).
+   - Bundled all vendor runtimes locally in assets/vendor/ (sql-wasm, pdf.js 3.11.174 with worker, full tesseract.js 4.1.1 with core WASM and ara/eng traineddata).
    - Created Web App Manifest (manifest.json) enabling home-screen PWA installation on field tablets and mobile devices.
 
 4. Field Engineering Domain Hardening (Milestone M4):
