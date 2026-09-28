@@ -588,6 +588,102 @@ async function runM2Verification() {
     }
   });
 
+  // --- Test Group 14: Deletion Non-Resurrection Under Partial Flush Failure ---
+  console.log('\n--- Group 14: Deletion Non-Resurrection Under Partial Flush Failure ---');
+  await testAsync('F09.5: Deleted records are never resurrected when an unrelated store fails during flush and app reboots', async () => {
+    function makeFaultIDB(failSet) {
+      const stores = new Map();
+      const db = {
+        objectStoreNames: { contains: n => stores.has(n) },
+        createObjectStore(n, o) { const s = { kp: o.keyPath, data: new Map(), createIndex() {} }; stores.set(n, s); return s; },
+        transaction(names, mode) {
+          const tx = { oncomplete: null, onerror: null, onabort: null };
+          const bad = names.some(n => failSet.has(n)) && mode === 'readwrite';
+          const pending = [];
+          tx.objectStore = n => {
+            const s = stores.get(n); if (!s) throw new Error('NotFoundError ' + n);
+            const req = (fn) => { const r = {}; pending.push(() => { if (bad) { r.error = 'ConstraintError'; r.onerror && r.onerror(); } else { r.result = fn(); r.onsuccess && r.onsuccess({ target: r }); } }); return r; };
+            return {
+              put: v => req(() => { if (!bad) s.data.set(String(v[s.kp]), structuredClone(v)); }),
+              get: k => req(() => { const v = s.data.get(String(k)); return v ? structuredClone(v) : undefined; }),
+              getAll: () => req(() => [...s.data.values()].map(v => structuredClone(v))),
+              delete: k => req(() => s.data.delete(String(k))),
+              clear: () => req(() => s.data.clear()),
+            };
+          };
+          setTimeout(() => { pending.forEach(f => f()); if (bad) tx.onabort && tx.onabort(); else tx.oncomplete && tx.oncomplete(); }, 0);
+          return tx;
+        },
+        _stores: stores,
+      };
+      return {
+        db,
+        factory: { open() { const r = {}; setTimeout(() => { r.result = db; r.onupgradeneeded && r.onupgradeneeded({ target: r }); r.onsuccess && r.onsuccess({ target: r }); }, 0); return r; } },
+      };
+    }
+
+    const legacy = {
+      workorders: [{ id: 'w1', no: 'WO-1' }],
+      tasks: [{ id: 't1', title: 'Task To Delete' }],
+      equipment: [{ id: 'e1', name: 'Excavator' }]
+    };
+    const ls = new MockLocalStorage();
+    ls.setItem('EIF_DATA_MASTER_V1', JSON.stringify(legacy));
+    const failSet = new Set(['equipment']);
+    const faultIdb = makeFaultIDB(failSet);
+
+    const oldIDB = global.indexedDB;
+    const oldLS = global.localStorage;
+    global.indexedDB = faultIdb.factory;
+    global.localStorage = ls;
+    if (global.window) {
+      global.window.indexedDB = faultIdb.factory;
+      global.window.localStorage = ls;
+    }
+
+    delete require.cache[require.resolve('../assets/js/db.js')];
+    let { PersistenceManager: PM } = require('../assets/js/db.js');
+
+    // Boot 1: migration incomplete because equipment fails
+    let pm1 = new PM();
+    global.S = JSON.parse(ls.getItem('EIF_DATA_MASTER_V1'));
+    if (global.window) global.window.S = global.S;
+    await pm1.loadStateIntoMemory();
+
+    // User empties all tasks
+    global.S.tasks = [];
+    if (global.window) global.window.S = global.S;
+    pm1.isDirty = true;
+    pm1.dirtySeq++;
+    // Flush runs: equipment still fails, but dual-write saves current S (with tasks = []) to localStorage
+    const flushRet = await pm1.flush();
+    assert.strictEqual(flushRet, false, 'Flush should return false due to failing equipment store');
+
+    // Transient failure clears
+    failSet.clear();
+
+    // Boot 2: app reboots, IDB has data, recovery runs
+    delete require.cache[require.resolve('../assets/js/db.js')];
+    ({ PersistenceManager: PM } = require('../assets/js/db.js'));
+    let pm2 = new PM();
+    global.S = JSON.parse(ls.getItem('EIF_DATA_MASTER_V1'));
+    if (global.window) global.window.S = global.S;
+    await pm2.loadStateIntoMemory();
+
+    // Tasks MUST NOT be resurrected from legacy data
+    assert.equal(global.S.tasks.length, 0, 'Tasks must remain empty after boot 2 (no resurrection)');
+    // Equipment MUST be preserved
+    assert.equal(global.S.equipment.length, 1, 'Equipment must be preserved across boot 2');
+    assert.equal(global.S.equipment[0].name, 'Excavator');
+
+    global.indexedDB = oldIDB;
+    global.localStorage = oldLS;
+    if (global.window) {
+      global.window.indexedDB = oldIDB;
+      global.window.localStorage = oldLS;
+    }
+  });
+
   console.log('\n========================================================================');
   console.log(`  VERIFICATION COMPLETE: ${passed} / ${total} tests passed (100% SUCCESS)`);
   console.log('========================================================================\n');

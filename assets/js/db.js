@@ -975,13 +975,13 @@
             }
           }
 
+          // Dual-write to localStorage if migration is incomplete so legacy storage always mirrors latest S
+          await this._dualWriteIfMigrationIncomplete(S);
+
           if (flushError) {
             // DEFECT P1 FIX: Do not update lastSavedSeq; preserve isDirty = true for retry
             return false;
           }
-
-          // Dual-write to localStorage if migration is incomplete
-          await this._dualWriteIfMigrationIncomplete(S);
 
           // Mark sequence as safely saved
           this.lastSavedSeq = Math.max(this.lastSavedSeq, seqToSave);
