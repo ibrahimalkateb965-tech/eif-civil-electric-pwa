@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>دليل الاستخدام الشامل — نظام المهندس إسلام فودة V16.50 | Autovem</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Fira+Code:wght@400;500;600&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #0a0a14;
+      --bg-card: #121226;
+      --bg-card-sub: #16162e;
+      --border-color: rgba(99, 102, 241, 0.3);
+      --border-glow: rgba(6, 182, 212, 0.45);
+      --accent-cyan: #06b6d4;
+      --accent-purple: #a855f7;
+      --accent-pink: #ec4899;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 10mm 12mm 12mm 12mm;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+      font-size: 9.2pt;
+      line-height: 1.5;
+      direction: rtl;
+      text-align: right;
+    }
+
+    .page-sheet {
+      page-break-after: always;
+      break-after: page;
+      min-height: 270mm;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page-sheet.last-page {
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    /* Top Branding Header */
+    .brand-header {
+      background: linear-gradient(135deg, rgba(18, 18, 38, 0.98), rgba(26, 26, 54, 0.98));
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(6, 182, 212, 0.08);
+    }
+
+    .brand-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo-badge {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+    }
+
+    .brand-info h1 {
+      font-family: 'Cairo', sans-serif;
+      font-size: 13.5pt;
+      font-weight: 800;
+      background: linear-gradient(135deg, #ffffff, #06b6d4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 2px;
+    }
+
+    .brand-info p {
+      font-size: 8pt;
+      color: var(--text-muted);
+    }
+
+    .brand-meta {
+      text-align: left;
+      direction: ltr;
+    }
+
+    .badge-agency {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 15px;
+      font-size: 7.5pt;
+      font-weight: 700;
+      background: rgba(168, 85, 247, 0.2);
+      border: 1px solid rgba(168, 85, 247, 0.5);
+      color: #d8b4fe;
+      margin-bottom: 3px;
+      letter-spacing: 0.5px;
+    }
+
+    .meta-date {
+      font-size: 7.5pt;
+      color: var(--text-dim);
+      font-family: 'Fira Code', monospace;
+    }
+
+    /* Page Running Header */
+    .running-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 6px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+      font-size: 7.5pt;
+      color: var(--text-dim);
+    }
+
+    .running-header .title {
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    /* Hero Banner */
+    .hero-banner {
+      background: linear-gradient(135deg, #101026 0%, #171738 50%, #0d1e36 100%);
+      border: 1px solid var(--border-glow);
+      border-radius: 10px;
+      padding: 15px 18px;
+      margin-bottom: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-title {
+      font-family: 'Cairo', sans-serif;
+      font-size: 15pt;
+      font-weight: 900;
+      color: #ffffff;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .hero-sub {
+      font-size: 9.5pt;
+      color: var(--accent-cyan);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .hero-desc {
+      font-size: 8.5pt;
+      color: #cbd5e1;
+      margin-bottom: 8px;
+      line-height: 1.45;
+    }
+
+    .pill-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .pill {
+      font-size: 7.5pt;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+    }
+
+    .pill.cyan { border-color: rgba(6, 182, 212, 0.4); color: var(--accent-cyan); background: rgba(6, 182, 212, 0.1); }
+    .pill.purple { border-color: rgba(168, 85, 247, 0.4); color: #c084fc; background: rgba(168, 85, 247, 0.1); }
+    .pill.green { border-color: rgba(16, 185, 129, 0.4); color: var(--accent-green); background: rgba(16, 185, 129, 0.1); }
+    .pill.amber { border-color: rgba(245, 158, 11, 0.4); color: var(--accent-amber); background: rgba(245, 158, 11, 0.1); }
+
+    /* Overview Highlights Grid */
+    .highlights-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .highlight-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 8px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+
+    .highlight-icon {
+      font-size: 16px;
+      margin-bottom: 2px;
+    }
+
+    .highlight-val {
+      font-family: 'Cairo', sans-serif;
+      font-size: 11.5pt;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .highlight-label {
+      font-size: 7.2pt;
+      color: var(--text-muted);
+    }
+
+    /* Section Cards */
+    .section-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 11px 14px;
+      margin-bottom: 10px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+
+    .section-title {
+      font-family: 'Cairo', sans-serif;
+      font-size: 10.5pt;
+      font-weight: 800;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .section-num {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      color: #000000;
+      font-size: 8pt;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Fira Code', monospace;
+    }
+
+    .section-tag {
+      font-size: 7pt;
+      font-family: 'Fira Code', monospace;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.1);
+      padding: 2px 7px;
+      border-radius: 4px;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      direction: ltr;
+    }
+
+    p {
+      margin-bottom: 5px;
+      font-size: 8.8pt;
+      color: #e2e8f0;
+      line-height: 1.45;
+    }
+
+    ul {
+      margin-right: 16px;
+      margin-bottom: 6px;
+    }
+
+    li {
+      font-size: 8.7pt;
+      margin-bottom: 4px;
+      color: #cbd5e1;
+      line-height: 1.45;
+    }
+
+    li b {
+      color: #ffffff;
+    }
+
+    .note-box {
+      background: rgba(6, 182, 212, 0.08);
+      border-right: 3px solid var(--accent-cyan);
+      border-radius: 0 5px 5px 0;
+      padding: 6px 10px;
+      margin: 6px 0;
+      font-size: 8pt;
+      color: #e0f2fe;
+    }
+
+    .warn-box {
+      background: rgba(245, 158, 11, 0.08);
+      border-right: 3px solid var(--accent-amber);
+      border-radius: 0 5px 5px 0;
+      padding: 6px 10px;
+      margin: 6px 0;
+      font-size: 8pt;
+      color: #fef3c7;
+    }
+
+    .success-box {
+      background: rgba(16, 185, 129, 0.08);
+      border-right: 3px solid var(--accent-green);
+      border-radius: 0 5px 5px 0;
+      padding: 6px 10px;
+      margin: 6px 0;
+      font-size: 8pt;
+      color: #d1fae5;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6px 0;
+      font-size: 8pt;
+      background: var(--bg-card-sub);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    th {
+      background: rgba(30, 41, 59, 0.9);
+      color: var(--accent-cyan);
+      font-family: 'Cairo', sans-serif;
+      font-weight: 700;
+      padding: 6px 8px;
+      border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+      text-align: right;
+    }
+
+    td {
+      padding: 5px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #cbd5e1;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Page Footer */
+    .sheet-footer {
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.5pt;
+      color: var(--text-dim);
+      font-family: 'Fira Code', 'Tajawal', sans-serif;
+    }
+
+    .sheet-footer .brand-sign {
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== SHEET 1 ==================== -->
+  <div class="page-sheet">
+    <div class="brand-header">
+      <div class="brand-left">
+        <div class="brand-logo-badge">⚡</div>
+        <div class="brand-info">
+          <h1>AUTOVEM • الهوية الهندسية الرقمية</h1>
+          <p>وكالة التطوير والنمو الذكي والأنظمة البرمجية الميدانية المتقدمة</p>
+        </div>
+      </div>
+      <div class="brand-meta">
+        <div class="badge-agency">AUTOVEMTECH AGENCY</div>
+        <div class="meta-date">REF: EIF-WMS-V16.50-DOC</div>
+      </div>
+    </div>
+
+    <div class="hero-banner">
+      <div class="hero-title">
+        <span>نظام المهندس إسلام فودة لإدارة الأعمال والمشاريع</span>
+        <span style="font-size: 12pt; color: var(--accent-cyan); font-family: 'Fira Code';">V16.50</span>
+      </div>
+      <div class="hero-sub">دليل التشغيل الميداني والحوكمة الرقمية • Local-First Offline PWA Master Manual</div>
+      <div class="hero-desc">وثيقة التشغيل الرسمية الشاملة لقطاع مقاولات توزيع الطاقة وشبكات الجهد المتوسط والمنخفض والأعمال المدنية المرتبطة بشركة الكهرباء والبلديات بمحافظة جدة.</div>
+      <div class="pill-tags">
+        <span class="pill cyan">⚡ IndexedDB V3 Engine</span>
+        <span class="pill purple">🔐 Hierarchical Strict RBAC</span>
+        <span class="pill green">🌐 100% Offline Autonomy</span>
+        <span class="pill amber">📱 5-Language Tablet-First</span>
+        <span class="pill">📸 SHA-256 Deduplication</span>
+        <span class="pill">🔍 AI-Powered Local OCR</span>
+      </div>
+    </div>
+
+    <div class="highlights-grid">
+      <div class="highlight-card">
+        <div class="highlight-icon">📋</div>
+        <div class="highlight-val">242 / 242</div>
+        <div class="highlight-label">اختبار مؤتمت بنجاح 100%</div>
+      </div>
+      <div class="highlight-card">
+        <div class="highlight-icon">📦</div>
+        <div class="highlight-val">598+ مادة</div>
+        <div class="highlight-label">كتالوج مواد سكيكو المعتمد</div>
+      </div>
+      <div class="highlight-card">
+        <div class="highlight-icon">⏱️</div>
+        <div class="highlight-val">≥ 10 ثوانٍ</div>
+        <div class="highlight-label">قيد الفيديو التوثيقي الصارم</div>
+      </div>
+      <div class="highlight-card">
+        <div class="highlight-icon">🗣️</div>
+        <div class="highlight-val">5 لغات</div>
+        <div class="highlight-label">عربي • إنجليزي • أردو • هندي • بنغالي</div>
+      </div>
+    </div>
+
+    <!-- SECTION 1 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">1</span>
+          <span>البدء والتثبيت وتشغيل النظام دون إنترنت (<bdi>Offline PWA Setup</bdi>)</span>
+        </div>
+        <span class="section-tag">ZERO-CDN ARCHITECTURE</span>
+      </div>
+      <p>صُمم النظام ليعمل بنسبة 100% في المواقع الميدانية والحفريات المعزولة دون الحاجة لأي اتصال بالإنترنت أو شريحة بيانات:</p>
+      <ul>
+        <li><b>التشغيل المحلي المباشر:</b> تشغيل خادم النظام الميداني عبر الرابط المحلي <code>http://localhost:8080</code> أو فتح الملف مباشرة.</li>
+        <li><b>تثبيت التطبيق المكتبي (<bdi>PWA Installation</bdi>):</b> من متصفح Google Chrome أو Edge، اضغط على زر التثبيت في شريط العنوان ليتحول النظام إلى تطبيق سطح مكتب مستقل بدون أشرطة المتصفح.</li>
+        <li><b>التشغيل الميداني على الأجهزة اللوحية (<bdi>Field Tablets</bdi>):</b> عند اتصال التابلت براوتر الموقع، افتح <code>http://192.168.1.X:8080</code> واضغط "إضافة للشاشة الرئيسية".</li>
+        <li><b>كاش الخدمة المقاوم للانقطاع (<bdi>Service Worker Cache</bdi>):</b> كافة الخطوط وحزم قراءة PDF والتعرف الضوئي (Tesseract OCR) ومحرك SQLite WASM مخزنة محلياً بالكامل.</li>
+      </ul>
+      <div class="success-box">✔ <b>ميزة الأمان الميداني:</b> لا يتم إرسال أي بايت من بيانات الموقع أو وثائق الحفر إلى أي خادم خارجي؛ الخصوصية الميدانية محلية 100%.</div>
+    </div>
+
+    <!-- SECTION 2 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">2</span>
+          <span>بوابة الشركات ومساحات العمل المستقلة (<bdi>Company Workspaces</bdi>)</span>
+        </div>
+        <span class="section-tag">MULTI-TENANT ISOLATION</span>
+      </div>
+      <p>يتيح النظام إدارة مشاريع شركات مقاولات متعددة أو فروع مستقلة في بيئات بيانات معزولة تماماً:</p>
+      <ul>
+        <li><b>إنشاء شركة جديدة:</b> أدخل اسم الشركة (مثال: فرع شركة جدة للكهرباء) وكود الشركة (مثل: <code>JED-SEC</code>) مع إمكانية رفع الشعار الرسمي ليظهر في ترويسة التقارير.</li>
+        <li><b>التبديل بين مساحات العمل:</b> بالنقر على "دخول الشركة"، يتم حصر أوامر العمل، والمستودعات، والمعدات، وسجل الأفراد داخل نطاق تلك الشركة حصراً دون أي تداخل في السجلات.</li>
+      </ul>
+    </div>
+
+    <div class="sheet-footer">
+      <div><span class="brand-sign">AUTOVEMTECH</span> • Hybrid Technology & Growth Agency • www.autovemtech.com</div>
+      <div>نظام المهندس إسلام فودة V16.50 • صفحة 1 من 4</div>
+    </div>
+  </div>
+
+  <!-- ==================== SHEET 2 ==================== -->
+  <div class="page-sheet">
+    <div class="running-header">
+      <span class="title">AUTOVEM • نظام المهندس إسلام فودة V16.50</span>
+      <span>دليل الاستخدام الميداني — مركز الأعمال والصلاحيات وأوامر العمل</span>
+    </div>
+
+    <!-- SECTION 3 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">3</span>
+          <span>مركز الأعمال الموحد والمسميات الوظيفية الصارمة (<bdi>Unified Work Center V16.50</bdi>)</span>
+        </div>
+        <span class="section-tag">CORE ENGINE V16.50</span>
+      </div>
+      <p>يمثل مركز الأعمال الموحد النقلة المعمارية الكبرى للإصدار V16.50 لإنهاء تشتت المتابعة وتطبيق الصلاحيات الهرمية الصارمة:</p>
+      <ul>
+        <li><b>المسميات الوظيفية والأقسام (<bdi>Job Titles & Departments</bdi>):</b> إلغاء التحقق بالنصوص العشوائية والاعتماد على مسميات وظيفية هيكلية مرتبطة بأقسام تشغيلية معتمدة.</li>
+        <li><b>نطاقات الصلاحية المتدرجة:</b>
+          <br>• <b>المسند إليه (<bdi>Assigned</bdi>):</b> يرى المراقب أو الفورمان أوامر العمل والبنود المسندة إليه شخصياً فقط.
+          <br>• <b>إدارة القسم (<bdi>Department Manage</bdi>):</b> يرى مدير القسم بنود قسمه والأقسام التابعة له.
+          <br>• <b>إدارة الشركة (<bdi>Company Manage</bdi>):</b> إشراف كامل على كافة أعمال الشركة النشطة.
+          <br>• <b>سوبر أدمن (<bdi>Super Admin</bdi>):</b> صلاحية المراجعة والتعديل الفوقي والرقابي عبر كافة الفروع.
+        </li>
+        <li><b>وضع جهاز المالك الميداني (<bdi>Owner Device Mode</bdi>):</b> يعمل النظام تلقائياً بكامل صلاحيات المالك عند التشغيل على جهازه الشخصي دون تسجيل، مع توثيق كافة العمليات في سجل التدقيق (<bdi>Audit Trail</bdi>).</li>
+        <li><b>قاعدة الفيديو التوثيقي الإلزامية:</b> يشترط النظام ألا تقل مدة الفيديو الميداني عن <b>10 ثوانٍ</b> لضمان إثبات كشف المسار واستقامة التمديد وعدم رفض المعاملة من الاستشاري.</li>
+        <li><b>عزل المرفقات ببصمة التشفير (<bdi>SHA-256 Deduplication</bdi>):</b> تخزين الملفات عبر بصمة محتواها؛ منع تكرار استهلاك الذاكرة عند رفع نفس الملف لأكثر من بند.</li>
+      </ul>
+      <div class="note-box">ℹ <b>سجل الأحداث الزمني (<bdi>Audit Trail</bdi>):</b> كافة عمليات الإضافة، التعديل، والحذف توثق في سجل ثابت غير قابل للتعديل (<bdi>Append-Only</bdi>) يوضح الفاعل والتوقيت.</div>
+    </div>
+
+    <!-- SECTION 4 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">4</span>
+          <span>إدارة أوامر العمل والإحداثيات الجغرافية (<bdi>Work Orders & GPS</bdi>)</span>
+        </div>
+        <span class="section-tag">SMART MAPPING</span>
+      </div>
+      <ul>
+        <li><b>تسجيل أمر العمل:</b> رقم أمر العمل، نوع التبعية (قديم / جديد)، نوع العمل (تنفيذ مشاريع / طوارئ)، والمسار (<bdi>Route / Chainage</bdi>).</li>
+        <li><b>الربط الذكي للإحداثيات:</b> يقبل حقل الموقع الإحداثيات العشرية (مثل <code>21.6015, 39.2683</code>) أو روابط Google Maps مباشرة؛ يستخرج النظام الإحداثيات ويولد رابطاً مباشراً لسيارات الطوارئ بنقرة واحدة.</li>
+        <li><b>حصر متطلبات الموقع وإعادة الوضع:</b> رصد مبدئي لكميات الأسفلت، البلاط، البردورات، والخرسانة المطلوبة في الموقع لتسهيل مطابقة الإغلاق النهائي.</li>
+      </ul>
+    </div>
+
+    <!-- SECTION 5 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">5</span>
+          <span>التصاريح البلدية وقراءة المستندات الذكية (<bdi>Balady Permits & OCR</bdi>)</span>
+        </div>
+        <span class="section-tag">AI OCR SCANNER</span>
+      </div>
+      <ul>
+        <li><b>التعرف الضوئي التلقائي (<bdi>Local OCR</bdi>):</b> ارفع ملف التصريح (صورة أو PDF) واضغط "قراءة التصريح"؛ يقوم المحرك باستخراج رقم التصريح، تاريخ البداية والنهاية، والشارع آلياً دون إنترنت.</li>
+        <li><b>آلية الإنذار المبكر:</b> تنبيهات ملونة قبل انتهاء التصريح (<b>10 أيام</b> لتصاريح التنفيذ، و<b>5 أيام</b> لتصاريح الطوارئ) لتجنب الغرامات البلدية.</li>
+        <li><b>احتساب استحقاق الطوارئ (45%):</b> إدخال وقت وتاريخ الإسناد والإغلاق؛ يحسب النظام تلقائياً الساعات المنقضية ومطابقتها لمعايير صرف الحافز.</li>
+      </ul>
+    </div>
+
+    <div class="sheet-footer">
+      <div><span class="brand-sign">AUTOVEMTECH</span> • Hybrid Technology & Growth Agency • www.autovemtech.com</div>
+      <div>نظام المهندس إسلام فودة V16.50 • صفحة 2 من 4</div>
+    </div>
+  </div>
+
+  <!-- ==================== SHEET 3 ==================== -->
+  <div class="page-sheet">
+    <div class="running-header">
+      <span class="title">AUTOVEM • نظام المهندس إسلام فودة V16.50</span>
+      <span>دليل الاستخدام الميداني — الحوكمة والسلامة والتنفيذ والمواد</span>
+    </div>
+
+    <!-- SECTION 6 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">6</span>
+          <span>الحوكمة وفصل التيار والتنسيق التشغيلي (<bdi>Governance & Outages</bdi>)</span>
+        </div>
+        <span class="section-tag">SEC OUTAGE COORD</span>
+      </div>
+      <ul>
+        <li><b>إدارة مواعيد الفصل:</b> توثيق طلبات الفصل لشبكات الجهد المتوسط (<bdi>MV</bdi>) والمنخفض (<bdi>LV</bdi>) والتنسيق مع غرفة العمليات.</li>
+        <li><b>قائمة التحقق الإلزامية قبل الفصل:</b> مطابقة نموذج فريق العمل، البرنامج التشغيلي، التصاريح، إبلاغ السلامة، وتوفر المواد.</li>
+        <li><b>سجل حركات وتأجيل المواعيد:</b> توثيق أي تأجيل أو إلغاء مع بيان السبب لحفظ حقوق المقاول في تمديد المدة الزمنية للمشروع.</li>
+      </ul>
+    </div>
+
+    <!-- SECTION 7 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">7</span>
+          <span>السلامة المهنية وتوثيق ملفات المخاطر (<bdi>Safety Dossier</bdi>)</span>
+        </div>
+        <span class="section-tag">HSE COMPLIANCE</span>
+      </div>
+      <ul>
+        <li><b>الملف الإلزامي للسلامة:</b> رفع حزمة متكاملة تشمل تصريح السلامة، تقييم المخاطر (<bdi>Risk Assessment</bdi>)، إجراءات العمل الآمن، وصور تأمين الموقع (الحواجز، الإضاءة الليلية، واللوحات التحذيرية).</li>
+        <li><b>إدارة المصادر والمستلمين:</b> ربط كل تصريح سلامة بالشخص المصرح له والمستلم المعتمدين من شركة الكهرباء.</li>
+      </ul>
+    </div>
+
+    <!-- SECTION 8 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">8</span>
+          <span>التنفيذ وإعادة الوضع والتوثيق المرئي (<bdi>Execution & Reinstatement</bdi>)</span>
+        </div>
+        <span class="section-tag">14-STAGE CHECKLIST</span>
+      </div>
+      <ul>
+        <li><b>مراحل التنفيذ الـ 14 المعتمدة:</b> توثيق بداية الحفر، قياس العمق بشريط القياس، استقامة القاع، تمديد الكابلات، استخدام الرولات، شريط التحذير، والردم على طبقات مع الدمك وفحص التربة.</li>
+        <li><b>حصر أعمال إعادة الوضع:</b> تسجيل الكميات المنفذة بالمتر المربع/المكعب للأسفلت والإنترلوك والبردورات لضمان قبول شهادة الإتمام.</li>
+      </ul>
+    </div>
+
+    <!-- SECTION 9 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">9</span>
+          <span>إدارة المواد والمستودع وكتالوج سكيكو (<bdi>SEC Materials & Warehouse</bdi>)</span>
+        </div>
+        <span class="section-tag">STRICT BALANCE AUDIT</span>
+      </div>
+      <ul>
+        <li><b>كتالوج سكيكو المدمج:</b> قاعدة بيانات متكاملة لأكثر من 590 مادة معتمدة مع أرقام المواصفات (<bdi>SDMS</bdi>) والأكواد المخزنية.</li>
+        <li><b>قاعدة الصرف الصارمة:</b> <u>يُمنع منعاً باتاً تسجيل أو صرف أي مادة من المستودع دون اختيار أمر العمل الموجهة إليه</u> مع رفع صورة إذن الصرف الورقي لحساب التوازن المخزني تلقائياً.</li>
+      </ul>
+      <div class="warn-box">⚠ <b>تنبيه مخزني:</b> لا يمكن إجراء أي حركة سحب مواد لمادة غير مسندة لكود أمر عمل فعال.</div>
+    </div>
+
+    <div class="sheet-footer">
+      <div><span class="brand-sign">AUTOVEMTECH</span> • Hybrid Technology & Growth Agency • www.autovemtech.com</div>
+      <div>نظام المهندس إسلام فودة V16.50 • صفحة 3 من 4</div>
+    </div>
+  </div>
+
+  <!-- ==================== SHEET 4 ==================== -->
+  <div class="page-sheet last-page">
+    <div class="running-header">
+      <span class="title">AUTOVEM • نظام المهندس إسلام فودة V16.50</span>
+      <span>دليل الاستخدام الميداني — الفرق والمعدات والموارد البشرية والأولويات</span>
+    </div>
+
+    <!-- SECTION 10 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">10</span>
+          <span>فرق العمل والعمال والمعدات والأسطول (<bdi>Crews, Fleet & Clearances</bdi>)</span>
+        </div>
+        <span class="section-tag">LEGAL EXPIRY RADAR</span>
+      </div>
+      <p>رادار تلقائي يرصد تواريخ الانتهاء ويطلق تنبيهات ملونة قبل <b>15 يوماً</b> لحماية الموقع من الإيقاف:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>نوع الوثيقة</th>
+            <th>الجهة المصدرة</th>
+            <th>مهلة الإنذار</th>
+            <th>الأثر التشغيلي</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>إقامة العامل / المهندس</b></td>
+            <td>وزارة الموارد البشرية والجوازات</td>
+            <td>15 يوماً قبل الانتهاء</td>
+            <td>تنبيه إداري لمنع تعطل كفالات الموقع</td>
+          </tr>
+          <tr>
+            <td><b>بطاقة الأمن الصناعي (SEC)</b></td>
+            <td>الشركة السعودية للكهرباء</td>
+            <td>15 يوماً قبل الانتهاء</td>
+            <td>حظر الدخول لمحطات التحويل وغرف التوزيع</td>
+          </tr>
+          <tr>
+            <td><b>تصريح الفحص الفني للمعدة (TV)</b></td>
+            <td>الفحص الدوري المعتمد</td>
+            <td>15 يوماً قبل الانتهاء</td>
+            <td>إيقاف فوري للونش أو الشاحنة عن العمل</td>
+          </tr>
+          <tr>
+            <td><b>التعميدات الفنية (MV/LV)</b></td>
+            <td>إدارة الجودة والسلامة بالشركة</td>
+            <td>15 يوماً قبل الانتهاء</td>
+            <td>سحب صلاحية استلام التصاريح وفتح الخلايا</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- SECTION 11 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">11</span>
+          <span>الموارد البشرية المركزية وبوابة الفريق (<bdi>HR & Team Room</bdi>)</span>
+        </div>
+        <span class="section-tag">FIELD ACCESS PORTAL</span>
+      </div>
+      <ul>
+        <li><b>إدارة HR المركزية:</b> المصدر الموحد لبيانات الأفراد، أرقام الجوال، والبريد الإلكتروني لمنع تكرار السجلات وتناقض البيانات.</li>
+        <li><b>بوابة الفريق الميدانية (<bdi>Team Room</bdi>):</b> تسجيل دخول المراقب برقم الجوال ورمز PIN لعرض أعماله اليومية ورفع التوثيق دون الاطلاع على أسعار العقود أو الأسرار المالية.</li>
+      </ul>
+    </div>
+
+    <!-- SECTION 12 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">12</span>
+          <span>مركز الأولويات ومنشئ التقارير المتقدم (<bdi>Priority Monitor & Reports</bdi>)</span>
+        </div>
+        <span class="section-tag">ANALYTICS & EXCEL</span>
+      </div>
+      <ul>
+        <li><b>مركز الأولويات اليومية:</b> شاشة حية تركز على الأنشطة الحرجة (تصاريح تنتهي خلال 3 أيام، مواعيد فصل مجدولة اليوم أو غداً، ونواقص مواد تضغط على الإنجاز).</li>
+        <li><b>منشئ التقارير المرن:</b> اختيار الحقول، تحديد الشروط المتقدمة، التجميع حسب الحي أو التاريخ، والتصدير الفوري بصيغة Excel و CSV.</li>
+      </ul>
+    </div>
+
+    <!-- SECTION 13 -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-num">13</span>
+          <span>النسخ الاحتياطي والاسترجاع وترحيل البيانات (<bdi>Backup & Recovery</bdi>)</span>
+        </div>
+        <span class="section-tag">DISASTER RECOVERY</span>
+      </div>
+      <ul>
+        <li><b>نسخ احتياطي بنقرة واحدة (<bdi>One-Click JSON</bdi>):</b> تنزيل ملف <code>Engineer_Islam_Fouda_Backup.json</code> يحفظ كامل المعاملات والمستخدمين والصلاحيات.</li>
+        <li><b>تصدير قاعدة بيانات SQLite كاملة:</b> استخراج قاعدة SQLite علائقية صلبة متوافقة مع أنظمة إدارة البيانات والمراجعة.</li>
+        <li><b>الاسترجاع والترحيل غير الهدام:</b> ترقية قواعد البيانات السابقة آلياً دون فقدان أي بيانات تاريخية مع حماية المحذوفات (<bdi>Tombstones</bdi>).</li>
+      </ul>
+    </div>
+
+    <div class="sheet-footer">
+      <div><span class="brand-sign">AUTOVEMTECH</span> • Hybrid Technology & Growth Agency • Official Domain: www.autovemtech.com</div>
+      <div>نظام المهندس إسلام فودة V16.50 • معتمد للاستخدام الميداني • صفحة 4 من 4</div>
+    </div>
+  </div>
+
+</body>
+</html>
