@@ -23,8 +23,6 @@ const PRECACHE_ASSETS = [
   './assets/vendor/tesseract/tesseract.min.js',
   './assets/vendor/tesseract/worker.min.js',
   './assets/vendor/tesseract/tesseract-core.wasm.js',
-  './assets/vendor/tesseract/ara.traineddata.gz',
-  './assets/vendor/tesseract/eng.traineddata.gz',
   './assets/vendor/sql/sql-wasm.js',
   './assets/vendor/sql/sql-wasm.wasm',
   './assets/engineer_profile.png',
